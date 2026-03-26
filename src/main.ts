@@ -36,9 +36,6 @@ export default class MermaidExporterPlugin extends Plugin {
 			for (const mutation of mutations) {
 				for (const node of Array.from(mutation.addedNodes)) {
 					if (!(node instanceof HTMLElement)) continue;
-					if (node.matches?.(".mermaid, .block-language-mermaid")) {
-						this.processMermaidBlocks(node);
-					}
 					this.processMermaidBlocks(node);
 				}
 			}
