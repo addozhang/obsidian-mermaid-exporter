@@ -1,18 +1,18 @@
-import { Notice } from "obsidian";
+import { Notice, setIcon } from "obsidian";
 import { svgElementToPng } from "./svgToPng";
 import type MermaidExporterPlugin from "./main";
+
+import * as fs from "fs";
 
 const POLL_INTERVAL = 200;
 const MAX_POLLS = 25; // 5 seconds max
 const MARKER_ATTR = "data-mermaid-export";
 
-const DOWNLOAD_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
-
 export function attachExportButton(container: HTMLElement, plugin: MermaidExporterPlugin): void {
 	if (container.hasAttribute(MARKER_ATTR)) return;
 	container.setAttribute(MARKER_ATTR, "true");
 
-	const svg = container.querySelector("svg") as SVGSVGElement | null;
+	const svg = container.querySelector<SVGSVGElement>("svg");
 	if (svg) {
 		createButton(container, svg, plugin);
 	} else {
@@ -24,7 +24,7 @@ function pollForSvg(container: HTMLElement, plugin: MermaidExporterPlugin): void
 	let polls = 0;
 	const timer = setInterval(() => {
 		polls++;
-		const svg = container.querySelector("svg") as SVGSVGElement | null;
+		const svg = container.querySelector<SVGSVGElement>("svg");
 		if (svg) {
 			clearInterval(timer);
 			createButton(container, svg, plugin);
@@ -49,12 +49,12 @@ function createButton(container: HTMLElement, svg: SVGSVGElement, plugin: Mermai
 	const btn = document.createElement("div");
 	btn.className = "edit-block-button mermaid-export-btn";
 	btn.setAttribute("aria-label", "Export as PNG");
-	btn.innerHTML = DOWNLOAD_ICON;
+	setIcon(btn, "download");
 
 	btn.addEventListener("click", (e) => {
 		e.stopPropagation();
 		e.preventDefault();
-		exportPng(svg, plugin);
+		void exportPng(svg, plugin);
 	});
 
 	parent.appendChild(btn);
@@ -70,8 +70,26 @@ async function exportPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Pro
 	}
 }
 
+interface ElectronRemoteDialog {
+	showSaveDialog(options: {
+		defaultPath: string;
+		filters: { name: string; extensions: string[] }[];
+		properties: string[];
+	}): Promise<{ canceled: boolean; filePath?: string }>;
+}
+
+interface ElectronRemote {
+	dialog: ElectronRemoteDialog;
+}
+
+interface ElectronWindow {
+	electron?: {
+		remote?: ElectronRemote;
+	};
+}
+
 async function saveWithDialog(blob: Blob): Promise<void> {
-	const electron = (window as any).electron;
+	const electron = (window as unknown as ElectronWindow).electron;
 	if (!electron?.remote?.dialog) {
 		new Notice("Export requires Obsidian desktop app.");
 		return;
@@ -85,7 +103,6 @@ async function saveWithDialog(blob: Blob): Promise<void> {
 
 	if (result.canceled || !result.filePath) return;
 
-	const fs = require("fs") as typeof import("fs");
 	const buffer = Buffer.from(await blob.arrayBuffer());
 	fs.writeFileSync(result.filePath, buffer);
 	new Notice(`Exported to ${result.filePath}`);

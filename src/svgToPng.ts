@@ -2,9 +2,12 @@ const MAX_CANVAS_DIMENSION = 16384;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Blob> {
-	const cloned = svgEl.cloneNode(true) as SVGSVGElement;
-	sanitizeSvg(cloned, svgEl);
-	const svgString = new XMLSerializer().serializeToString(cloned);
+	const node = svgEl.cloneNode(true);
+	if (!(node instanceof SVGSVGElement)) {
+		throw new Error("Failed to clone SVG element");
+	}
+	sanitizeSvg(node, svgEl);
+	const svgString = new XMLSerializer().serializeToString(node);
 	const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
 
 	return new Promise((resolve, reject) => {
@@ -33,7 +36,7 @@ export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Bl
 				"image/png",
 			);
 		};
-		img.onerror = (e) => reject(new Error(`Failed to load SVG as image: ${e}`));
+		img.onerror = () => reject(new Error("Failed to load SVG as image"));
 		img.src = dataUrl;
 	});
 }
@@ -62,7 +65,7 @@ function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElemen
 		}
 
 		const originalFo = originalFOs[idx];
-		const styledEl = originalFo?.querySelector("span, div, p") as HTMLElement | null;
+		const styledEl = originalFo?.querySelector<HTMLElement>("span, div, p") ?? null;
 		const computed = styledEl ? window.getComputedStyle(styledEl) : null;
 		const fontSize = parseFloat(computed?.fontSize || "14");
 		const fontFamily = computed?.fontFamily || "sans-serif";
@@ -109,8 +112,8 @@ function extractTextLines(fo: Element): string[] {
 	const walk = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
 			current += node.textContent?.trim() || "";
-		} else if (node.nodeType === Node.ELEMENT_NODE) {
-			if ((node as Element).tagName.toLowerCase() === "br") {
+		} else if (node instanceof Element) {
+			if (node.tagName.toLowerCase() === "br") {
 				if (current) {
 					lines.push(current);
 					current = "";

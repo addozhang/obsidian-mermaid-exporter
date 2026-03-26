@@ -22,7 +22,7 @@ export class MermaidExporterSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Mermaid Exporter" });
+		new Setting(containerEl).setName("Mermaid exporter").setHeading();
 
 		new Setting(containerEl)
 			.setName("Image scale")
