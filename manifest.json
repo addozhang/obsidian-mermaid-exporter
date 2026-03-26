@@ -1,0 +1,10 @@
+{
+	"id": "mermaid-exporter",
+	"name": "Mermaid Exporter",
+	"description": "Export rendered mermaid diagrams as PNG images with configurable resolution.",
+	"author": "Addo Zhang",
+	"authorUrl": "https://atbug.com",
+	"isDesktopOnly": true,
+	"minAppVersion": "0.15.0",
+	"version": "0.1.0"
+}

@@ -1,0 +1,18 @@
+{
+	"name": "obsidian-mermaid-exporter",
+	"version": "0.1.0",
+	"description": "Export rendered mermaid diagrams as PNG images",
+	"author": "addozhang",
+	"main": "main.js",
+	"license": "MIT",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production"
+	},
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"esbuild": "^0.18.20",
+		"obsidian": "obsidianmd/obsidian-api",
+		"typescript": "^5.0.0"
+	}
+}

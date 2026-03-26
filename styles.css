@@ -1,0 +1,14 @@
+.cm-preview-code-block.cm-lang-mermaid,
+.block-language-mermaid {
+	position: relative;
+}
+
+.cm-embed-block .mermaid-export-btn.edit-block-button,
+.block-language-mermaid .mermaid-export-btn.edit-block-button {
+	inset-inline-end: calc(var(--size-2-2) + 40px);
+}
+
+.mermaid-export-btn svg {
+	width: 16px;
+	height: 16px;
+}
