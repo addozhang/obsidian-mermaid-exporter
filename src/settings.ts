@@ -22,8 +22,6 @@ export class MermaidExporterSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("Export options").setHeading();
-
 		new Setting(containerEl)
 			.setName("Image scale")
 			.setDesc(
