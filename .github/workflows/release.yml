@@ -5,14 +5,13 @@ on:
     tags:
       - "*"
 
-env:
-  PLUGIN_NAME: mermaid-exporter
-
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@v4
@@ -26,11 +25,15 @@ jobs:
         run: npm install
 
       - name: Build
-        run: |
-          npm run build
-          mkdir ${{ env.PLUGIN_NAME }}
-          cp main.js manifest.json styles.css ${{ env.PLUGIN_NAME }}
-          zip -r ${{ env.PLUGIN_NAME }}.zip ${{ env.PLUGIN_NAME }}
+        run: npm run build
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       - name: Create release and upload assets
         env:
@@ -42,7 +45,6 @@ jobs:
           fi
 
           gh release upload "$TAG" \
-            "${{ env.PLUGIN_NAME }}.zip#${PLUGIN_NAME}-${TAG}.zip" \
             main.js \
             manifest.json \
             styles.css \
