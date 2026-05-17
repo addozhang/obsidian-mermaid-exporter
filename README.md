@@ -12,7 +12,7 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 
 ## Installation
 
-### From Community Plugins (coming soon)
+### From Community Plugins
 
 1. Open **Settings → Community Plugins → Browse**
 2. Search for **Mermaid Exporter**
@@ -58,11 +58,7 @@ To test locally, symlink or copy `main.js`, `manifest.json`, and `styles.css` in
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m 'feat: add your feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, bug reports, and pull request guidelines.
 
 ## License
 
