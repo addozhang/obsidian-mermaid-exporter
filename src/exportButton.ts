@@ -50,7 +50,7 @@ function createButton(container: HTMLElement, svg: SVGSVGElement, plugin: Mermai
 	btn.setAttribute("aria-label", "Export as PNG");
 	setIcon(btn, "download");
 
-	btn.addEventListener("click", (e) => {
+	plugin.registerDomEvent(btn, "click", (e) => {
 		e.stopPropagation();
 		e.preventDefault();
 		void exportPng(svg, plugin);
