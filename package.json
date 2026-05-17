@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-mermaid-exporter",
-	"version": "1.0.4",
-	"description": "Export rendered mermaid diagrams as PNG images",
+	"version": "1.0.5",
+	"description": "Export rendered Mermaid diagrams as PNG images",
 	"author": "addozhang",
 	"main": "main.js",
 	"license": "MIT",
