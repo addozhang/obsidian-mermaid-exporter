@@ -3,7 +3,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Blob> {
 	const node = svgEl.cloneNode(true);
-	if (!(node instanceof SVGSVGElement)) {
+	if (!node.instanceOf(SVGSVGElement)) {
 		throw new Error("Failed to clone SVG element");
 	}
 	sanitizeSvg(node, svgEl);
@@ -24,10 +24,14 @@ export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Bl
 				canvasHeight = Math.floor(canvasHeight * downscale);
 			}
 
-			const canvas = document.createElement("canvas");
+			const canvas = createEl("canvas");
 			canvas.width = canvasWidth;
 			canvas.height = canvasHeight;
-			const ctx = canvas.getContext("2d")!;
+			const ctx = canvas.getContext("2d");
+			if (!ctx) {
+				reject(new Error("Failed to get 2D canvas context"));
+				return;
+			}
 			ctx.fillStyle = "#ffffff";
 			ctx.fillRect(0, 0, canvas.width, canvas.height);
 			ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
@@ -66,12 +70,12 @@ function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElemen
 
 		const originalFo = originalFOs[idx];
 		const styledEl = originalFo?.querySelector<HTMLElement>("span, div, p") ?? null;
-		const computed = styledEl ? window.getComputedStyle(styledEl) : null;
+		const computed = styledEl ? activeWindow.getComputedStyle(styledEl) : null;
 		const fontSize = parseFloat(computed?.fontSize || "14");
 		const fontFamily = computed?.fontFamily || "sans-serif";
 		const fill = computed?.color || "#333";
 
-		const textEl = document.createElementNS(SVG_NS, "text");
+		const textEl = activeDocument.createElementNS(SVG_NS, "text");
 		textEl.setAttribute("text-anchor", "middle");
 		textEl.setAttribute("font-size", String(fontSize));
 		textEl.setAttribute("font-family", fontFamily);
@@ -89,7 +93,7 @@ function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElemen
 			const totalTextHeight = lineHeight * lines.length;
 			const startY = y + (height - totalTextHeight) / 2 + fontSize;
 			for (let i = 0; i < lines.length; i++) {
-				const tspan = document.createElementNS(SVG_NS, "tspan");
+				const tspan = activeDocument.createElementNS(SVG_NS, "tspan");
 				tspan.setAttribute("x", String(centerX));
 				tspan.setAttribute("y", String(startY + i * lineHeight));
 				tspan.textContent = lines[i];
@@ -112,7 +116,7 @@ function extractTextLines(fo: Element): string[] {
 	const walk = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
 			current += node.textContent?.trim() || "";
-		} else if (node instanceof Element) {
+		} else if (node.instanceOf(Element)) {
 			if (node.tagName.toLowerCase() === "br") {
 				if (current) {
 					lines.push(current);

@@ -35,17 +35,19 @@ export default class MermaidExporterPlugin extends Plugin {
 		this.observer = new MutationObserver((mutations) => {
 			for (const mutation of mutations) {
 				for (const node of Array.from(mutation.addedNodes)) {
-					if (!(node instanceof HTMLElement)) continue;
+					if (!node.instanceOf(HTMLElement)) continue;
 					this.processMermaidBlocks(node);
 				}
 			}
 		});
 
-		this.observer.observe(document.body, { childList: true, subtree: true });
+		this.observer.observe(activeDocument.body, { childList: true, subtree: true });
 
-		document.querySelectorAll<HTMLElement>(".mermaid, .block-language-mermaid").forEach((el) => {
-			this.processMermaidBlocks(el);
-		});
+		activeDocument
+			.querySelectorAll<HTMLElement>(".mermaid, .block-language-mermaid")
+			.forEach((el) => {
+				this.processMermaidBlocks(el);
+			});
 	}
 
 	private processMermaidBlocks(el: HTMLElement): void {
@@ -63,7 +65,8 @@ export default class MermaidExporterPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = (await this.loadData()) as Partial<MermaidExporterSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
 	}
 
 	async saveSettings(): Promise<void> {

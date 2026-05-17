@@ -22,22 +22,22 @@ export function attachExportButton(container: HTMLElement, plugin: MermaidExport
 
 function pollForSvg(container: HTMLElement, plugin: MermaidExporterPlugin): void {
 	let polls = 0;
-	const timer = setInterval(() => {
+	const timer = activeWindow.setInterval(() => {
 		polls++;
 		const svg = container.querySelector<SVGSVGElement>("svg");
 		if (svg) {
-			clearInterval(timer);
+			activeWindow.clearInterval(timer);
 			createButton(container, svg, plugin);
 		} else if (polls >= MAX_POLLS) {
-			clearInterval(timer);
+			activeWindow.clearInterval(timer);
 			container.removeAttribute(MARKER_ATTR);
 		}
 	}, POLL_INTERVAL);
 }
 
 function getButtonParent(container: HTMLElement): HTMLElement {
-	const codeBlock = container.closest(".cm-preview-code-block");
-	if (codeBlock instanceof HTMLElement) return codeBlock;
+	const codeBlock = container.closest<HTMLElement>(".cm-preview-code-block");
+	if (codeBlock) return codeBlock;
 	return container;
 }
 
@@ -46,8 +46,7 @@ function createButton(container: HTMLElement, svg: SVGSVGElement, plugin: Mermai
 
 	if (parent.querySelector(".mermaid-export-btn")) return;
 
-	const btn = document.createElement("div");
-	btn.className = "edit-block-button mermaid-export-btn";
+	const btn = parent.createDiv({ cls: "edit-block-button mermaid-export-btn" });
 	btn.setAttribute("aria-label", "Export as PNG");
 	setIcon(btn, "download");
 
@@ -56,8 +55,6 @@ function createButton(container: HTMLElement, svg: SVGSVGElement, plugin: Mermai
 		e.preventDefault();
 		void exportPng(svg, plugin);
 	});
-
-	parent.appendChild(btn);
 }
 
 async function exportPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Promise<void> {
@@ -65,7 +62,6 @@ async function exportPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Pro
 		const blob = await svgElementToPng(svg, plugin.settings.scale);
 		await saveWithDialog(blob);
 	} catch (err) {
-		console.error("Mermaid Exporter: export failed", err);
 		new Notice(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
 }
@@ -89,14 +85,14 @@ interface ElectronWindow {
 }
 
 async function saveWithDialog(blob: Blob): Promise<void> {
-	const electron = (window as unknown as ElectronWindow).electron;
+	const electron = (activeWindow as unknown as ElectronWindow).electron;
 	if (!electron?.remote?.dialog) {
 		new Notice("Export requires Obsidian desktop app.");
 		return;
 	}
 
 	const result = await electron.remote.dialog.showSaveDialog({
-		defaultPath: `mermaid-diagram.png`,
+		defaultPath: `mermaid-diagram-${Date.now()}.png`,
 		filters: [{ name: "PNG Images", extensions: ["png"] }],
 		properties: ["showOverwriteConfirmation"],
 	});
@@ -104,6 +100,6 @@ async function saveWithDialog(blob: Blob): Promise<void> {
 	if (result.canceled || !result.filePath) return;
 
 	const buffer = Buffer.from(await blob.arrayBuffer());
-	fs.writeFileSync(result.filePath, buffer);
+	await fs.promises.writeFile(result.filePath, buffer);
 	new Notice(`Exported to ${result.filePath}`);
 }
