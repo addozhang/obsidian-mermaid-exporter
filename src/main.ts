@@ -17,9 +17,17 @@ export default class MermaidExporterPlugin extends Plugin {
 		this.addSettingTab(new MermaidExporterSettingTab(this.app, this));
 
 		// Reading mode: Obsidian's supported, scoped extension point.
+		// Obsidian's built-in mermaid renderer replaces a placeholder
+		// `<pre>` with a `<div class="mermaid">` asynchronously, often
+		// *after* this post-processor first runs. We synchronously try
+		// the current subtree, and if no mermaid block is present yet
+		// we attach a short-lived MutationObserver scoped to `el` only
+		// (never `document.body`) that waits for the replacement and
+		// disconnects itself once it fires or a 5s budget elapses.
 		this.registerMarkdownPostProcessor(
 			(el: HTMLElement, _ctx: MarkdownPostProcessorContext) => {
-				this.processMermaidBlocks(el);
+				if (this.processMermaidBlocks(el)) return;
+				this.observeForLateMermaid(el);
 			},
 			100,
 		);
@@ -30,19 +38,52 @@ export default class MermaidExporterPlugin extends Plugin {
 		this.registerEditorExtension(buildLivePreviewExtension(this));
 	}
 
-	processMermaidBlocks(el: HTMLElement): void {
+	/**
+	 * Attach an export button to any mermaid block at or beneath `el`.
+	 * Returns `true` iff at least one mermaid block was found and
+	 * processed in this synchronous pass — used by the post-processor
+	 * to decide whether to fall back to a scoped late-render observer.
+	 */
+	processMermaidBlocks(el: HTMLElement): boolean {
 		const isMermaidContainer =
 			el.classList?.contains("mermaid") ||
 			el.classList?.contains("block-language-mermaid");
 
 		if (isMermaidContainer) {
 			attachExportButton(el, this);
-			return;
+			return true;
 		}
 
-		el.querySelectorAll<HTMLElement>(MERMAID_SELECTOR).forEach((block) => {
+		const blocks = el.querySelectorAll<HTMLElement>(MERMAID_SELECTOR);
+		blocks.forEach((block) => {
 			attachExportButton(block, this);
 		});
+		return blocks.length > 0;
+	}
+
+	/**
+	 * Scoped, short-lived MutationObserver as a fallback for the
+	 * reading-mode case where Obsidian renders the mermaid block
+	 * asynchronously *after* the post-processor first runs. Scope is
+	 * `el` (a single rendered block container), never `document.body`,
+	 * and the observer auto-disconnects on the first hit or after a
+	 * 5-second budget — so it does not contribute to global mutation
+	 * traffic the way the old plugin-wide observer did.
+	 */
+	private observeForLateMermaid(el: HTMLElement): void {
+		const win = el.ownerDocument?.defaultView ?? activeWindow;
+		let done = false;
+		const finish = () => {
+			if (done) return;
+			done = true;
+			observer.disconnect();
+			win.clearTimeout(timeoutId);
+		};
+		const observer = new MutationObserver(() => {
+			if (this.processMermaidBlocks(el)) finish();
+		});
+		observer.observe(el, { childList: true, subtree: true });
+		const timeoutId = win.setTimeout(finish, 5000);
 	}
 
 	async loadSettings(): Promise<void> {
