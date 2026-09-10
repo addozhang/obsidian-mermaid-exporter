@@ -1,14 +1,49 @@
-.cm-preview-code-block.cm-lang-mermaid,
-.block-language-mermaid {
+/* Mermaid Exporter button group.
+   Self-contained styling — deliberately NOT reusing Obsidian's internal
+   `.edit-block-button` classes, whose visibility rules changed in recent
+   Obsidian builds and left the button permanently invisible. */
+
+.mermaid-export-host {
 	position: relative;
 }
 
-.cm-embed-block .mermaid-export-btn.edit-block-button,
-.block-language-mermaid .mermaid-export-btn.edit-block-button {
+.mermaid-export-btns {
+	position: absolute;
+	top: var(--size-2-2);
 	inset-inline-end: calc(var(--size-2-2) + 40px);
+	display: flex;
+	gap: var(--size-2-1);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 120ms ease-in-out;
+	z-index: 5;
+}
+
+.mermaid-export-host:hover .mermaid-export-btns {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.mermaid-export-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-secondary-alt);
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: var(--shadow-s);
+}
+
+.mermaid-export-btn:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 
 .mermaid-export-btn svg {
-	width: 16px;
-	height: 16px;
+	width: 15px;
+	height: 15px;
+	pointer-events: none;
 }
