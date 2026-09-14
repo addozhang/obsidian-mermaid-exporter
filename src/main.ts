@@ -113,7 +113,16 @@ function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 		}
 
 		update(update: ViewUpdate): void {
-			if (update.docChanged || update.viewportChanged) {
+			// `selectionSet` matters: in Live Preview an embedded mermaid
+			// block re-renders when the cursor *leaves* it, without any
+			// doc/viewport change. Without this trigger the buttons would
+			// never attach to blocks rendered by cursor movement alone.
+			if (
+				update.docChanged ||
+				update.viewportChanged ||
+				update.selectionSet ||
+				update.heightChanged
+			) {
 				this.schedule();
 			}
 		}
