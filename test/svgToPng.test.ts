@@ -1,8 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+	cleanRootStyle,
 	extractTextLines,
 	fixDimensions,
 	replaceForeignObjects,
+	resolveBackground,
+	resolveCssVariables,
+	resolveVarsInString,
+	sanitizeSvg,
 	stripRootCss,
 	svgElementToPng,
 } from "../src/svgToPng";
@@ -220,6 +226,171 @@ describe("replaceForeignObjects", () => {
 		expect(svg.querySelector("switch")).toBeNull();
 		expect(svg.querySelector("#kept")).not.toBeNull();
 		expect(svg.querySelector("rect")).not.toBeNull();
+	});
+});
+
+describe("resolveVarsInString", () => {
+	const lookup = (vars: Record<string, string>) => (name: string) => vars[name];
+
+	it("substitutes a variable that is defined", () => {
+		expect(resolveVarsInString("var(--_fg)", lookup({ "--_fg": "#dadada" }))).toBe("#dadada");
+	});
+
+	it("falls back to the declaration's default when the variable is missing", () => {
+		expect(resolveVarsInString("var(--_fg,#1f1f1f)", lookup({}))).toBe("#1f1f1f");
+	});
+
+	it("prefers the resolved variable over the fallback", () => {
+		expect(
+			resolveVarsInString("var(--_fg,#1f1f1f)", lookup({ "--_fg": "rgb(1, 2, 3)" })),
+		).toBe("rgb(1, 2, 3)");
+	});
+
+	it("resolves nested fallbacks", () => {
+		expect(resolveVarsInString("var(--a, var(--b, #fff))", lookup({ "--b": "#000" }))).toBe("#000");
+		expect(resolveVarsInString("var(--a, var(--b, #fff))", lookup({}))).toBe("#fff");
+	});
+
+	it("drops references that are neither defined nor have a fallback", () => {
+		expect(resolveVarsInString("var(--nope)", lookup({}))).toBe("");
+	});
+
+	it("keeps surrounding text and handles several references per value", () => {
+		expect(
+			resolveVarsInString("rx:var(--_r);fill:var(--_s,#eee)", lookup({ "--_r": "4px", "--_s": "#222" })),
+		).toBe("rx:4px;fill:#222");
+	});
+
+	it("leaves balanced-free input untouched", () => {
+		expect(resolveVarsInString("#ffffff", lookup({}))).toBe("#ffffff");
+	});
+
+	it("ignores unbalanced var( without throwing", () => {
+		expect(resolveVarsInString("var(--x", lookup({}))).toBe("var(--x");
+	});
+});
+
+describe("resolveCssVariables", () => {
+	// Mirrors Pele's root style: private aliases pointing at the public
+	// --pele-* tokens with the light theme as the declared default.
+	const PELE_ROOT_STYLE =
+		"--_fg:var(--pele-fg,#1f1f1f);--_l:var(--pele-line,#2f2f2f);" +
+		"--_s:var(--pele-surface,#f3f3f3);--_r:var(--pele-radius,4px)";
+
+	it("bakes declared defaults into attributes when the live tree has no value (jsdom)", () => {
+		const svg = makeSvg(
+			`<g stroke="var(--_l)"><rect fill="var(--_s,#f3f3f3)" style="rx:var(--_r);fill:#ffe"/></g>`,
+		);
+		svg.setAttribute("style", PELE_ROOT_STYLE);
+		const original = svg.cloneNode(true) as SVGSVGElement;
+
+		resolveCssVariables(svg, original);
+
+		const g = svg.querySelector("g");
+		const rect = svg.querySelector("rect");
+		expect(g?.getAttribute("stroke")).toBe("#2f2f2f");
+		expect(rect?.getAttribute("fill")).toBe("#f3f3f3");
+		expect(rect?.getAttribute("style")).toBe("rx:4px;fill:#ffe");
+	});
+
+	it("falls back to the attribute's own default when nothing declares the variable", () => {
+		const svg = makeSvg(`<rect fill="var(--unknown,#abcdef)"/>`);
+		const original = svg.cloneNode(true) as SVGSVGElement;
+		resolveCssVariables(svg, original);
+		expect(svg.querySelector("rect")?.getAttribute("fill")).toBe("#abcdef");
+	});
+
+	it("leaves attributes without var() untouched", () => {
+		const svg = makeSvg(`<rect fill="#abcdef"/>`);
+		const original = svg.cloneNode(true) as SVGSVGElement;
+		resolveCssVariables(svg, original);
+		expect(svg.querySelector("rect")?.getAttribute("fill")).toBe("#abcdef");
+	});
+
+	it("does not loop on self-referential declarations", () => {
+		const svg = makeSvg(`<rect fill="var(--loop)"/>`);
+		svg.setAttribute("style", "--loop:var(--loop)");
+		const original = svg.cloneNode(true) as SVGSVGElement;
+		expect(() => resolveCssVariables(svg, original)).not.toThrow();
+		expect(svg.querySelector("rect")?.getAttribute("fill")).toBe("");
+	});
+});
+
+describe("cleanRootStyle", () => {
+	it("keeps plain declarations but drops custom properties and layout props", () => {
+		const svg = makeSvg();
+		svg.setAttribute(
+			"style",
+			"max-width:100%;height:auto;--_fg:#dadada;color:#dadada;font:16px sans-serif",
+		);
+		cleanRootStyle(svg);
+		const style = svg.getAttribute("style") ?? "";
+		expect(style).not.toContain("--_fg");
+		expect(style).not.toContain("max-width");
+		expect(style).not.toContain("height");
+		expect(style).toContain("color:#dadada");
+		expect(style).toContain("font:16px sans-serif");
+	});
+
+	it("removes the attribute entirely when nothing is left", () => {
+		const svg = makeSvg();
+		svg.setAttribute("style", "max-width:100%;--_fg:#fff");
+		cleanRootStyle(svg);
+		expect(svg.hasAttribute("style")).toBe(false);
+	});
+
+	it("is a no-op without a style attribute", () => {
+		const svg = makeSvg();
+		expect(() => cleanRootStyle(svg)).not.toThrow();
+		expect(svg.hasAttribute("style")).toBe(false);
+	});
+});
+
+describe("resolveBackground", () => {
+	it("defaults to white when the diagram defines no background variable", () => {
+		const svg = makeSvg();
+		expect(resolveBackground(svg)).toBe("#ffffff");
+	});
+});
+
+describe("sanitizeSvg on real Pele output (Obsidian ≥ 1.15)", () => {
+	const fixture = readFileSync(`${process.cwd()}/test/fixtures/pele-flowchart.svg`, "utf8");
+
+	function loadFixture(): SVGSVGElement {
+		return new DOMParser()
+			.parseFromString(fixture, "image/svg+xml")
+			.documentElement as unknown as SVGSVGElement;
+	}
+
+	it("leaves no unresolved var() reference behind", () => {
+		const clone = loadFixture();
+		const original = loadFixture();
+		sanitizeSvg(clone, original);
+
+		const serialized = new XMLSerializer().serializeToString(clone);
+		expect(serialized).not.toContain("var(");
+	});
+
+	it("keeps concrete colors on shapes, edges and labels", () => {
+		const clone = loadFixture();
+		const original = loadFixture();
+		sanitizeSvg(clone, original);
+
+		const node = clone.querySelector(".pele-node[data-id='A'] rect");
+		expect(node?.getAttribute("fill")).toBe("#f3f3f3");
+		expect(node?.getAttribute("stroke")).toBe("#8a8a8a");
+		expect(clone.querySelector(".pele-edges")?.getAttribute("stroke")).toBe("#1f1f1f");
+		expect(clone.querySelector(".pele-node[data-id='A'] text")?.textContent).toBe("开始");
+	});
+
+	it("drops responsive sizing so the intrinsic size survives", () => {
+		const clone = loadFixture();
+		const original = loadFixture();
+		sanitizeSvg(clone, original);
+
+		expect(clone.getAttribute("style")).not.toContain("max-width");
+		expect(clone.getAttribute("width")).toBe("383");
+		expect(clone.getAttribute("height")).toBe("84");
 	});
 });
 

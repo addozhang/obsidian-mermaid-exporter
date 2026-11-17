@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-flowchart" viewBox="0 0 383 84" width="383" height="84" style="max-width:100%;height:auto;--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);--_m:var(--pele-muted,#6e6e6e);--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3);--_a:var(--pele-surface-alt,#e6e6e6);--_b:var(--pele-border,#8a8a8a);--_c:var(--pele-accent,#5b7bd5);color:var(--_fg);--_r:var(--pele-radius,4px);--_fm:var(--pele-font-mono,monospace);font:16px sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;font-family:var(--pele-font,sans-serif)" fill="var(--_fg)" role="graphics-document document" aria-roledescription="flowchart">
+<g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round">
+<g class="pele-edge" data-id="L_A_B_0">
+<path d="M76,41.78L117,41.78"/>
+<path class="pele-marker" d="M124,41.78L116,45.14L116,38.42Z" fill="var(--_l)" stroke="none"/>
+</g>
+<g class="pele-edge" data-id="L_B_C_0">
+<path d="M232.1,41.78L299.1,41.78"/>
+<path class="pele-marker" d="M306.1,41.78L298.1,45.14L298.1,38.42Z" fill="var(--_l)" stroke="none"/>
+</g>
+</g>
+<g class="pele-edge-labels" font-size="14">
+<g class="pele-edge-label" data-id="L_B_C_0">
+<rect x="254.6" y="31.28" width="22" height="21" rx="3" fill="var(--_bg)"/>
+<text x="265.6" y="46.68" text-anchor="middle">是</text>
+</g>
+</g>
+<g class="pele-nodes">
+<g class="pele-node pele-shape-rect" data-id="A" transform="translate(42,41.78)">
+<rect x="-34" y="-24" width="68" height="48" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/>
+<text class="pele-label" x="0" y="5.6" text-anchor="middle">开始</text>
+</g>
+<g class="pele-node pele-shape-diam" data-id="B" transform="translate(178.05,41.78)">
+<polygon points="0,-33.78 54.05,0 0,33.78 -54.05,0" fill="var(--_s)" stroke="var(--_b)"/>
+<text class="pele-label" x="0" y="5.6" text-anchor="middle">判断?</text>
+</g>
+<g class="pele-node pele-shape-rect" data-id="C" transform="translate(340.1,41.78)">
+<rect x="-34" y="-24" width="68" height="48" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/>
+<text class="pele-label" x="0" y="5.6" text-anchor="middle">完成</text>
+</g>
+</g>
+</svg>

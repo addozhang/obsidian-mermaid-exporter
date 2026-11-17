@@ -5,6 +5,7 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 ## Features
 
 - **WYSIWYG Export** — Exports the diagram exactly as Obsidian renders it, including your current theme
+- **Theme-aware colors** — Works with both renderers: Mermaid (Obsidian ≤ 1.14) and Pele (Obsidian ≥ 1.15)
 - **Native Save Dialog** — Uses the system file picker to save PNG files anywhere on disk
 - **Configurable Resolution** — Scale factor from 1x to 4x (default 2x) for crisp high-DPI images
 - **Seamless UI** — Export button appears next to the native "Edit this block" button on hover
@@ -41,8 +42,14 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 
 ## Requirements
 
-- Obsidian ≥ 0.15.0
+- Obsidian ≥ 1.5.0
 - Desktop only (Windows / macOS / Linux)
+
+## How it works
+
+Obsidian 1.15 replaced its bundled Mermaid renderer with [Pele](https://pele.run/), which paints diagrams with CSS variables (`fill="var(--_fg)"`, `stroke="var(--_l)"`, …) and keeps those variables in the root `<svg>`'s inline `style`. Before an SVG can be rasterized through a canvas it has to be serialized into a data URL, where the document stylesheet no longer applies. The plugin therefore resolves every `var()` reference against the live, themed element before serializing — so the PNG keeps the colors, corner radii and fonts you see in the note, and the canvas is filled with the diagram's own background instead of a hard-coded white.
+
+Mermaid's pre-1.15 output is still handled: HTML labels inside `<foreignObject>` are converted to `<text>`, `:root` rules are stripped, and percentage-based sizing is replaced with the viewBox dimensions.
 
 ## Development
 

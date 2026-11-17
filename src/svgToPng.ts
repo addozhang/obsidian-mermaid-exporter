@@ -1,12 +1,24 @@
 const MAX_CANVAS_DIMENSION = 16384;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+// Declarations that only make sense inside a live note (responsive sizing).
+// Dropped from the exported root so the PNG keeps the diagram's intrinsic size.
+const LAYOUT_PROPS = new Set([
+	"max-width",
+	"min-width",
+	"width",
+	"max-height",
+	"min-height",
+	"height",
+]);
+
 export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Blob> {
 	const node = svgEl.cloneNode(true);
 	if (!node.instanceOf(SVGSVGElement)) {
 		throw new Error("Failed to clone SVG element");
 	}
 	sanitizeSvg(node, svgEl);
+	const background = resolveBackground(svgEl);
 	const svgString = new XMLSerializer().serializeToString(node);
 	const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
 
@@ -32,7 +44,7 @@ export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Bl
 				reject(new Error("Failed to get 2D canvas context"));
 				return;
 			}
-			ctx.fillStyle = "#ffffff";
+			ctx.fillStyle = background;
 			ctx.fillRect(0, 0, canvas.width, canvas.height);
 			ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
 			canvas.toBlob(
@@ -45,12 +57,229 @@ export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Bl
 	});
 }
 
-function sanitizeSvg(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement): void {
+export function sanitizeSvg(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement): void {
+	// Order matters: CSS variables are resolved while the clone is still
+	// structurally identical to the live tree (parallel walk), because later
+	// steps (foreignObject → text) change the shape of both trees.
+	resolveCssVariables(svgEl, originalSvgEl);
 	replaceForeignObjects(svgEl, originalSvgEl);
 	stripRootCss(svgEl);
+	cleanRootStyle(svgEl, originalSvgEl);
 	fixDimensions(svgEl);
-	svgEl.removeAttribute("style");
 }
+
+/* ------------------------------------------------------------------ *
+ * CSS custom property resolution
+ * ------------------------------------------------------------------ */
+
+/**
+ * Obsidian ≥ 1.15 renders diagrams with Pele, which expresses every color
+ * as a CSS variable (`fill="var(--_fg)"`, `stroke="var(--_l)"`, …) and
+ * declares those variables in the root <svg>'s inline `style`. Once the
+ * SVG is serialized into a data URL and loaded as an <img>, the document
+ * stylesheet is gone — only the inline declarations survive. So every
+ * `var()` reference has to be baked into a literal value taken from the
+ * live, themed element before serialization.
+ *
+ * Mermaid's own output benefits too: it also leans on variables that live
+ * outside the SVG.
+ */
+export function resolveCssVariables(
+	svgEl: SVGSVGElement,
+	originalSvgEl: SVGSVGElement,
+): void {
+	// Variables declared inline on the live root — the only declarations that
+	// survive serialization. Used as a second lookup path: a reference that the
+	// engine cannot compute (or does not compute yet) still resolves to the
+	// default it was declared with, instead of disappearing.
+	const declared = new Map(
+		parseStyle(originalSvgEl.getAttribute("style") ?? "").filter(([prop]) =>
+			prop.startsWith("--"),
+		),
+	);
+
+	forEachPair(svgEl, originalSvgEl, (el, original) => {
+		const attrs = Array.from(el.attributes).filter((attr) => attr.value.includes("var("));
+		if (attrs.length === 0) return;
+		const lookup = createVarLookup(original, declared);
+		for (const attr of attrs) {
+			el.setAttribute(attr.name, resolveVarsInString(attr.value, lookup));
+		}
+	});
+}
+
+function createVarLookup(
+	el: Element,
+	declared: Map<string, string> = new Map(),
+): (name: string) => string | undefined {
+	const win = el.ownerDocument?.defaultView ?? activeWindow;
+	const computed = win.getComputedStyle(el);
+	const cache = new Map<string, string | undefined>();
+
+	const lookup = (name: string, depth = 0): string | undefined => {
+		if (cache.has(name)) return cache.get(name);
+		cache.set(name, undefined); // guards against self-referential cycles
+
+		const fromComputed = computed.getPropertyValue(name).trim();
+		// An unresolvable variable comes back empty, or still holding a `var()`
+		// reference we cannot follow — treat both as missing.
+		let value: string | undefined =
+			fromComputed && !fromComputed.includes("var(") ? fromComputed : undefined;
+
+		if (value === undefined && depth < 5) {
+			const decl = declared.get(name);
+			if (decl !== undefined) {
+				const resolved = resolveVarsInString(decl, (next) => lookup(next, depth + 1), 1);
+				value = resolved.trim() || undefined;
+			}
+		}
+
+		cache.set(name, value);
+		return value;
+	};
+
+	return (name) => lookup(name);
+}
+
+/**
+ * Replaces every `var(--x)` / `var(--x, fallback)` in `input` with either
+ * the value from `lookup` or the declared fallback. Supports nested
+ * fallbacks such as `var(--a, var(--b, #fff))`.
+ */
+export function resolveVarsInString(
+	input: string,
+	lookup: (name: string) => string | undefined,
+	depth = 0,
+): string {
+	if (depth > 10 || !input.includes("var(")) return input;
+
+	let out = "";
+	let index = 0;
+	while (index < input.length) {
+		const start = input.indexOf("var(", index);
+		if (start < 0) {
+			out += input.slice(index);
+			break;
+		}
+		out += input.slice(index, start);
+
+		const end = findClosingParen(input, start + 4);
+		if (end < 0) {
+			// Unbalanced input — leave the remainder untouched.
+			out += input.slice(start);
+			break;
+		}
+
+		const inner = input.slice(start + 4, end);
+		const comma = findTopLevelComma(inner);
+		const name = (comma < 0 ? inner : inner.slice(0, comma)).trim();
+		const fallback = comma < 0 ? undefined : inner.slice(comma + 1).trim();
+
+		const resolved = name.startsWith("--") ? lookup(name) : undefined;
+		if (resolved !== undefined) {
+			out += resolveVarsInString(resolved, lookup, depth + 1);
+		} else if (fallback !== undefined) {
+			out += resolveVarsInString(fallback, lookup, depth + 1);
+		}
+		// Neither resolvable nor a fallback: drop the reference entirely so we
+		// never emit an invalid value into the exported image.
+
+		index = end + 1;
+	}
+	return out;
+}
+
+function findClosingParen(input: string, from: number): number {
+	let level = 1;
+	for (let i = from; i < input.length; i++) {
+		const char = input[i];
+		if (char === "(") level++;
+		else if (char === ")" && --level === 0) return i;
+	}
+	return -1;
+}
+
+function findTopLevelComma(input: string): number {
+	let level = 0;
+	for (let i = 0; i < input.length; i++) {
+		const char = input[i];
+		if (char === "(") level++;
+		else if (char === ")") level--;
+		else if (char === "," && level === 0) return i;
+	}
+	return -1;
+}
+
+/** Walks two structurally identical trees in parallel (clone vs live DOM). */
+function forEachPair(
+	a: Element,
+	b: Element,
+	visit: (el: Element, original: Element) => void,
+): void {
+	visit(a, b);
+	const aChildren = Array.from(a.children);
+	const bChildren = Array.from(b.children);
+	const count = Math.min(aChildren.length, bChildren.length);
+	for (let i = 0; i < count; i++) {
+		forEachPair(aChildren[i], bChildren[i], visit);
+	}
+}
+
+/**
+ * Normalizes the root `style` attribute: drops the custom property
+ * declarations (now baked into every reference) and the responsive sizing
+ * that only makes sense inside a note. What remains — font, colour,
+ * letter-spacing — is plain CSS that survives serialization.
+ */
+export function cleanRootStyle(svgEl: SVGSVGElement, _originalSvgEl?: SVGSVGElement): void {
+	const declarations = parseStyle(svgEl.getAttribute("style") ?? "");
+	const kept = declarations.filter(
+		([prop]) => !prop.startsWith("--") && !LAYOUT_PROPS.has(prop),
+	);
+	const style = kept.map(([prop, value]) => `${prop}:${value}`).join(";");
+	if (style) svgEl.setAttribute("style", style);
+	else svgEl.removeAttribute("style");
+}
+
+function parseStyle(style: string): [string, string][] {
+	const out: [string, string][] = [];
+	for (const part of style.split(";")) {
+		const at = part.indexOf(":");
+		if (at < 0) continue;
+		const prop = part.slice(0, at).trim().toLowerCase();
+		const value = part.slice(at + 1).trim();
+		if (prop && value) out.push([prop, value]);
+	}
+	return out;
+}
+
+/**
+ * The canvas background: the diagram's own `--pele-bg` (i.e. the theme
+ * background) when available, otherwise white. Without this a dark-theme
+ * diagram would export light text onto a white canvas.
+ */
+export function resolveBackground(svgEl: SVGSVGElement): string {
+	const declared = new Map(
+		parseStyle(svgEl.getAttribute("style") ?? "").filter(([prop]) =>
+			prop.startsWith("--"),
+		),
+	);
+	const lookup = createVarLookup(svgEl, declared);
+	for (const name of ["--_bg", "--pele-bg"]) {
+		const value = lookup(name);
+		if (!value || value.includes("var(")) continue;
+		// A transparent theme background would produce a PNG that looks empty
+		// in most viewers — fall back to white instead.
+		if (/^(transparent|none)$/i.test(value)) continue;
+		if (/^rgba?\([^)]*,\s*0(\.0+)?\s*\)$/i.test(value)) continue;
+		return value;
+	}
+	return "#ffffff";
+}
+
+/* ------------------------------------------------------------------ *
+ * Mermaid (pre-1.15) fallbacks
+ * ------------------------------------------------------------------ */
 
 export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement): void {
 	const clonedFOs = Array.from(svgEl.querySelectorAll("foreignObject"));
