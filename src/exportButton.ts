@@ -59,7 +59,7 @@ function createButton(container: HTMLElement, svg: SVGSVGElement, plugin: Mermai
 
 async function exportPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Promise<void> {
 	try {
-		const blob = await svgElementToPng(svg, plugin.settings.scale);
+		const blob = await svgElementToPng(svg, plugin.settings.scale, plugin.settings.theme);
 		await saveWithDialog(blob);
 	} catch (err) {
 		new Notice(`Export failed: ${err instanceof Error ? err.message : String(err)}`);

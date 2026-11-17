@@ -39,6 +39,15 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Image scale | 2 | Resolution multiplier for exported PNG (1–4x) |
+| Export theme | Match Obsidian | Colours baked into the PNG: follow the note, or always use Light / Dark |
+
+### Export theme
+
+`Match Obsidian` keeps whatever colours the diagram is rendered with. `Light` and `Dark` always export a fixed palette, which is what you want when the image lands in a document with a background you don't control — a light blog post, a dark slide deck, a PDF.
+
+Pele drives every colour through CSS variables, so switching theme is a recolour, not a re-render: label positions, shapes and line breaks stay exactly as measured. Any palette the diagram sets itself (e.g. `%%{init: {"themeVariables": {"pie1": "#..."}}}%%`) is left alone in every theme.
+
+This applies to diagrams drawn by Pele (Obsidian 1.15 and later). Diagrams rendered by the older Mermaid engine bake their colours into the SVG, so they always export as rendered.
 
 ## Requirements
 

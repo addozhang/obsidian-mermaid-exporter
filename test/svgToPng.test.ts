@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { DARK_PALETTE, LIGHT_PALETTE, paletteOverrides } from "../src/palette";
 import {
 	cleanRootStyle,
 	extractTextLines,
@@ -391,6 +392,69 @@ describe("sanitizeSvg on real Pele output (Obsidian ≥ 1.15)", () => {
 		expect(clone.getAttribute("style")).not.toContain("max-width");
 		expect(clone.getAttribute("width")).toBe("383");
 		expect(clone.getAttribute("height")).toBe("84");
+	});
+});
+
+describe("export themes", () => {
+	// Mirrors the root style Pele writes: private aliases pointing at the
+	// public --pele-* tokens, with the light theme as the declared default.
+	const PELE_ROOT_STYLE =
+		"--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);" +
+		"--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3)";
+
+	function mount(markup: string): SVGSVGElement {
+		const holder = document.createElement("div");
+		holder.innerHTML = markup;
+		return holder.querySelector("svg") as SVGSVGElement;
+	}
+
+	function peleSvg(extraStyle = ""): SVGSVGElement {
+		return mount(
+			`<svg class="pele pele-flowchart" viewBox="0 0 100 50" width="100" height="50" ` +
+				`style="${PELE_ROOT_STYLE}${extraStyle}" fill="var(--_fg)">` +
+				`<rect class="node" fill="var(--_s)" stroke="var(--_l)"/></svg>`,
+		);
+	}
+
+	it("only offers overrides for Pele diagrams and fixed themes", () => {
+		expect(paletteOverrides(peleSvg(), "follow")).toBeUndefined();
+		expect(paletteOverrides(peleSvg(), "dark")).toBeInstanceOf(Map);
+		expect(paletteOverrides(mount(`<svg><rect/></svg>`), "dark")).toBeUndefined();
+	});
+
+	it("keeps light and dark palettes complete and distinct", () => {
+		expect(Object.keys(DARK_PALETTE).sort()).toEqual(Object.keys(LIGHT_PALETTE).sort());
+		expect(DARK_PALETTE["--pele-bg"]).not.toBe(LIGHT_PALETTE["--pele-bg"]);
+	});
+
+	it("leaves custom properties the diagram declared itself out of the override", () => {
+		const overrides = paletteOverrides(peleSvg(";--pele-series-1:#ff0000"), "dark");
+		expect(overrides?.has("--pele-series-1")).toBe(false);
+		expect(overrides?.get("--pele-bg")).toBe(DARK_PALETTE["--pele-bg"]);
+	});
+
+	it("exports the requested palette instead of the rendered one", () => {
+		const svg = peleSvg();
+		const overrides = paletteOverrides(svg, "dark");
+		const node = svg.cloneNode(true) as SVGSVGElement;
+		sanitizeSvg(node, svg, overrides);
+
+		expect(node.querySelector("rect")?.getAttribute("fill")).toBe(
+			DARK_PALETTE["--pele-surface"],
+		);
+		expect(node.querySelector("rect")?.getAttribute("stroke")).toBe(
+			DARK_PALETTE["--pele-line"],
+		);
+		expect(resolveBackground(svg, overrides)).toBe(DARK_PALETTE["--pele-bg"]);
+	});
+
+	it("falls back to the declared defaults without a theme override", () => {
+		const svg = peleSvg();
+		const node = svg.cloneNode(true) as SVGSVGElement;
+		sanitizeSvg(node, svg);
+
+		expect(node.querySelector("rect")?.getAttribute("fill")).toBe("#f3f3f3");
+		expect(resolveBackground(svg)).toBe("#fff");
 	});
 });
 

@@ -1,3 +1,8 @@
+import { paletteOverrides, type ThemeMode } from "./palette";
+
+/** Palette tokens to override while resolving variables, if any. */
+export type VarOverrides = ReadonlyMap<string, string> | undefined;
+
 const MAX_CANVAS_DIMENSION = 16384;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -12,14 +17,20 @@ const LAYOUT_PROPS = new Set([
 	"height",
 ]);
 
-export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Blob> {
+export function svgElementToPng(
+	svgEl: SVGSVGElement,
+	scale: number,
+	theme: ThemeMode = "follow",
+): Promise<Blob> {
+	const overrides = paletteOverrides(svgEl, theme);
 	const node = svgEl.cloneNode(true);
 	if (!node.instanceOf(SVGSVGElement)) {
 		throw new Error("Failed to clone SVG element");
 	}
-	sanitizeSvg(node, svgEl);
-	const background = resolveBackground(svgEl);
+	sanitizeSvg(node, svgEl, overrides);
+	const background = resolveBackground(svgEl, overrides);
 	const svgString = new XMLSerializer().serializeToString(node);
+
 	const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
 
 	return new Promise((resolve, reject) => {
@@ -57,14 +68,18 @@ export function svgElementToPng(svgEl: SVGSVGElement, scale: number): Promise<Bl
 	});
 }
 
-export function sanitizeSvg(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement): void {
+export function sanitizeSvg(
+	svgEl: SVGSVGElement,
+	originalSvgEl: SVGSVGElement,
+	overrides?: VarOverrides,
+): void {
 	// Order matters: CSS variables are resolved while the clone is still
 	// structurally identical to the live tree (parallel walk), because later
 	// steps (foreignObject → text) change the shape of both trees.
-	resolveCssVariables(svgEl, originalSvgEl);
+	resolveCssVariables(svgEl, originalSvgEl, overrides);
 	replaceForeignObjects(svgEl, originalSvgEl);
 	stripRootCss(svgEl);
-	cleanRootStyle(svgEl, originalSvgEl);
+	cleanRootStyle(svgEl);
 	fixDimensions(svgEl);
 }
 
@@ -87,6 +102,7 @@ export function sanitizeSvg(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement):
 export function resolveCssVariables(
 	svgEl: SVGSVGElement,
 	originalSvgEl: SVGSVGElement,
+	overrides?: VarOverrides,
 ): void {
 	// Variables declared inline on the live root — the only declarations that
 	// survive serialization. Used as a second lookup path: a reference that the
@@ -101,7 +117,7 @@ export function resolveCssVariables(
 	forEachPair(svgEl, originalSvgEl, (el, original) => {
 		const attrs = Array.from(el.attributes).filter((attr) => attr.value.includes("var("));
 		if (attrs.length === 0) return;
-		const lookup = createVarLookup(original, declared);
+		const lookup = createVarLookup(original, declared, overrides);
 		for (const attr of attrs) {
 			el.setAttribute(attr.name, resolveVarsInString(attr.value, lookup));
 		}
@@ -111,6 +127,7 @@ export function resolveCssVariables(
 function createVarLookup(
 	el: Element,
 	declared: Map<string, string> = new Map(),
+	overrides: VarOverrides = undefined,
 ): (name: string) => string | undefined {
 	const win = el.ownerDocument?.defaultView ?? activeWindow;
 	const computed = win.getComputedStyle(el);
@@ -119,6 +136,13 @@ function createVarLookup(
 	const lookup = (name: string, depth = 0): string | undefined => {
 		if (cache.has(name)) return cache.get(name);
 		cache.set(name, undefined); // guards against self-referential cycles
+
+		// An explicit palette (export theme) wins over whatever the app renders.
+		const override = overrides?.get(name);
+		if (override !== undefined) {
+			cache.set(name, override);
+			return override;
+		}
 
 		const fromComputed = computed.getPropertyValue(name).trim();
 		// An unresolvable variable comes back empty, or still holding a `var()`
@@ -231,7 +255,7 @@ function forEachPair(
  * that only makes sense inside a note. What remains — font, colour,
  * letter-spacing — is plain CSS that survives serialization.
  */
-export function cleanRootStyle(svgEl: SVGSVGElement, _originalSvgEl?: SVGSVGElement): void {
+export function cleanRootStyle(svgEl: SVGSVGElement): void {
 	const declarations = parseStyle(svgEl.getAttribute("style") ?? "");
 	const kept = declarations.filter(
 		([prop]) => !prop.startsWith("--") && !LAYOUT_PROPS.has(prop),
@@ -258,13 +282,16 @@ function parseStyle(style: string): [string, string][] {
  * background) when available, otherwise white. Without this a dark-theme
  * diagram would export light text onto a white canvas.
  */
-export function resolveBackground(svgEl: SVGSVGElement): string {
+export function resolveBackground(
+	svgEl: SVGSVGElement,
+	overrides?: VarOverrides,
+): string {
 	const declared = new Map(
 		parseStyle(svgEl.getAttribute("style") ?? "").filter(([prop]) =>
 			prop.startsWith("--"),
 		),
 	);
-	const lookup = createVarLookup(svgEl, declared);
+	const lookup = createVarLookup(svgEl, declared, overrides);
 	for (const name of ["--_bg", "--pele-bg"]) {
 		const value = lookup(name);
 		if (!value || value.includes("var(")) continue;
