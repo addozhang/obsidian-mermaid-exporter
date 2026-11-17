@@ -83,6 +83,59 @@ export function sanitizeSvg(
 	fixDimensions(svgEl);
 }
 
+export function getTextWidth(text: string, fontSize: number, fontFamily: string): number {
+	const ctx = activeDocument.createElement("canvas").getContext("2d");
+	if (!ctx) return -1;
+	ctx.font = `${fontSize}px ${fontFamily}`;
+	return ctx.measureText(text).width;
+}
+
+// A width of -1 means measurement isn't available (e.g. no canvas context) — treat
+// everything as fitting rather than wrapping blindly.
+function fits(text: string, maxWidth: number, fontSize: number, fontFamily: string): boolean {
+	const w = getTextWidth(text, fontSize, fontFamily);
+	return w < 0 || w <= maxWidth;
+}
+
+// Mermaid's foreignObject labels rely on the browser's HTML word-wrap, which is lost once
+// they're replaced with plain SVG <text>. Re-wrap each line by word (falling back to
+// character breaks for a single word wider than the box) so long labels wrap instead of
+// overflowing their node.
+export function wrapLine(text: string, maxWidth: number, fontSize: number, fontFamily: string): string[] {
+	if (maxWidth <= 0 || fits(text, maxWidth, fontSize, fontFamily)) return [text];
+
+	const lines: string[] = [];
+	let current = "";
+	for (const word of text.split(" ")) {
+		const candidate = current ? `${current} ${word}` : word;
+		if (fits(candidate, maxWidth, fontSize, fontFamily)) {
+			current = candidate;
+			continue;
+		}
+		if (current) {
+			lines.push(current);
+			current = "";
+		}
+		if (fits(word, maxWidth, fontSize, fontFamily)) {
+			current = word;
+			continue;
+		}
+		// The word itself is too wide — break it at character boundaries.
+		let chunk = "";
+		for (const ch of word) {
+			if (fits(chunk + ch, maxWidth, fontSize, fontFamily) || !chunk) {
+				chunk += ch;
+			} else {
+				lines.push(chunk);
+				chunk = ch;
+			}
+		}
+		current = chunk;
+	}
+	if (current) lines.push(current);
+	return lines.length > 0 ? lines : [text];
+}
+
 /* ------------------------------------------------------------------ *
  * CSS custom property resolution
  * ------------------------------------------------------------------ */
@@ -327,9 +380,11 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 		const originalFo = originalFOs[idx];
 		const styledEl = originalFo?.querySelector<HTMLElement>("span, div, p") ?? null;
 		const computed = styledEl ? activeWindow.getComputedStyle(styledEl) : null;
-		const fontSize = parseFloat(computed?.fontSize || "14");
 		const fontFamily = computed?.fontFamily || "sans-serif";
 		const fill = computed?.color || "#333";
+		const fontSize = parseFloat(computed?.fontSize || "14");
+
+		const wrappedLines = lines.flatMap((line) => wrapLine(line, width, fontSize, fontFamily));
 
 		const textEl = activeDocument.createElementNS(SVG_NS, "text");
 		textEl.setAttribute("text-anchor", "middle");
@@ -339,20 +394,20 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 
 		const centerX = x + width / 2;
 
-		if (lines.length === 1) {
+		if (wrappedLines.length === 1) {
 			textEl.setAttribute("x", String(centerX));
 			textEl.setAttribute("y", String(y + height / 2));
 			textEl.setAttribute("dominant-baseline", "middle");
-			textEl.textContent = lines[0];
+			textEl.textContent = wrappedLines[0];
 		} else {
 			const lineHeight = fontSize * 1.2;
-			const totalTextHeight = lineHeight * lines.length;
+			const totalTextHeight = lineHeight * wrappedLines.length;
 			const startY = y + (height - totalTextHeight) / 2 + fontSize;
-			for (let i = 0; i < lines.length; i++) {
+			for (let i = 0; i < wrappedLines.length; i++) {
 				const tspan = activeDocument.createElementNS(SVG_NS, "tspan");
 				tspan.setAttribute("x", String(centerX));
 				tspan.setAttribute("y", String(startY + i * lineHeight));
-				tspan.textContent = lines[i];
+				tspan.textContent = wrappedLines[i];
 				textEl.appendChild(tspan);
 			}
 		}

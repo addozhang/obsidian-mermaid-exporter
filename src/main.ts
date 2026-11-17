@@ -103,12 +103,27 @@ export default class MermaidExporterPlugin extends Plugin {
  * whole document — this is what makes the plugin cheap and what
  * makes popout windows work automatically (each editor instance
  * carries its own copy of the extension).
+ *
+ * `docChanged`/`viewportChanged` alone aren't enough: Obsidian renders
+ * a mermaid block asynchronously (swapping the raw `<pre><code>` for
+ * the rendered `.mermaid` widget after mermaid.js finishes, well after
+ * construction-time `schedule()` already ran and found nothing), and
+ * the same swap happens *every time the cursor enters/leaves the
+ * block* to toggle source/rendered view — neither of which touches
+ * the document or the viewport. A MutationObserver scoped to this
+ * view's own DOM (never `document.body`) catches both; it's cheap
+ * because `processMermaidBlocks` is a no-op past the first mermaid
+ * block it finds already marked, and rescans are coalesced into one
+ * `requestAnimationFrame` per burst of mutations.
  */
 function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 	class MermaidExportViewPlugin implements PluginValue {
 		private scheduled = false;
+		private observer: MutationObserver;
 
 		constructor(private view: EditorView) {
+			this.observer = new MutationObserver(() => this.schedule());
+			this.observer.observe(view.dom, { childList: true, subtree: true });
 			this.schedule();
 		}
 
@@ -119,9 +134,7 @@ function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 		}
 
 		destroy(): void {
-			// no-op: buttons live in the editor DOM and are torn down
-			// with the view itself; per-button listeners are owned by
-			// the plugin via registerDomEvent.
+			this.observer.disconnect();
 		}
 
 		private schedule(): void {

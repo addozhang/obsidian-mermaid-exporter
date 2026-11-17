@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DARK_PALETTE, LIGHT_PALETTE, paletteOverrides } from "../src/palette";
 import {
 	cleanRootStyle,
 	extractTextLines,
 	fixDimensions,
+	getTextWidth,
 	replaceForeignObjects,
 	resolveBackground,
 	resolveCssVariables,
@@ -12,7 +13,23 @@ import {
 	sanitizeSvg,
 	stripRootCss,
 	svgElementToPng,
+	wrapLine,
 } from "../src/svgToPng";
+
+// Stub canvas measurement as a fixed width per character, so wrap points are predictable.
+const CHAR_WIDTH = 10;
+function stubCharWidthMeasurement(): () => void {
+	const original = HTMLCanvasElement.prototype.getContext;
+	HTMLCanvasElement.prototype.getContext = function () {
+		return {
+			font: "",
+			measureText: (text: string) => ({ width: text.length * CHAR_WIDTH }),
+		} as unknown as CanvasRenderingContext2D;
+	} as unknown as HTMLCanvasElement["getContext"];
+	return () => {
+		HTMLCanvasElement.prototype.getContext = original;
+	};
+}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -227,6 +244,129 @@ describe("replaceForeignObjects", () => {
 		expect(svg.querySelector("switch")).toBeNull();
 		expect(svg.querySelector("#kept")).not.toBeNull();
 		expect(svg.querySelector("rect")).not.toBeNull();
+	});
+
+	describe("with a measurable canvas context", () => {
+		let restore: () => void;
+
+		beforeEach(() => {
+			restore = stubCharWidthMeasurement();
+		});
+
+		afterEach(() => {
+			restore();
+		});
+
+		it("wraps a line wider than its box into multiple tspans, keeping font-size unchanged", () => {
+			const fo = makeForeignObject('<span style="font-size: 14px">a very long line of text</span>', {
+				x: "0",
+				y: "0",
+				width: "100", // fits 10 chars per line at CHAR_WIDTH=10
+				height: "60",
+			});
+			const svg = makeSvg();
+			svg.appendChild(fo);
+			const original = svg.cloneNode(true) as SVGSVGElement;
+
+			replaceForeignObjects(svg, original);
+
+			const text = svg.querySelector("text");
+			expect(text?.getAttribute("font-size")).toBe("14"); // never scaled down
+			const tspans = Array.from(svg.querySelectorAll("tspan")).map((t) => t.textContent);
+			expect(tspans).toEqual(["a very", "long line", "of text"]);
+		});
+
+		it("leaves a line untouched when it already fits within its box", () => {
+			const fo = makeForeignObject('<span style="font-size: 14px">ok</span>', {
+				x: "0",
+				y: "0",
+				width: "100",
+				height: "40",
+			});
+			const svg = makeSvg();
+			svg.appendChild(fo);
+			const original = svg.cloneNode(true) as SVGSVGElement;
+
+			replaceForeignObjects(svg, original);
+
+			const text = svg.querySelector("text");
+			expect(text?.getAttribute("font-size")).toBe("14");
+			expect(text?.textContent).toBe("ok");
+		});
+
+		it("wraps only the overflowing <br>-separated line, keeping the short one intact", () => {
+			const fo = makeForeignObject(
+				'<span style="font-size: 14px">short<br>a much much longer second line</span>',
+				{ x: "0", y: "0", width: "100", height: "90" },
+			);
+			const svg = makeSvg();
+			svg.appendChild(fo);
+			const original = svg.cloneNode(true) as SVGSVGElement;
+
+			replaceForeignObjects(svg, original);
+
+			const text = svg.querySelector("text");
+			const tspans = Array.from(svg.querySelectorAll("tspan")).map((t) => t.textContent);
+			expect(text?.getAttribute("font-size")).toBe("14");
+			expect(tspans[0]).toBe("short");
+			expect(tspans.length).toBeGreaterThan(2); // the long second line got wrapped further
+		});
+	});
+});
+
+describe("wrapLine", () => {
+	let restore: () => void;
+
+	beforeEach(() => {
+		restore = stubCharWidthMeasurement();
+	});
+
+	afterEach(() => {
+		restore();
+	});
+
+	it("returns the line unchanged when it already fits", () => {
+		expect(wrapLine("short", 100, 14, "sans-serif")).toEqual(["short"]);
+	});
+
+	it("breaks on word boundaries to stay within maxWidth", () => {
+		const lines = wrapLine("a very long line of text", 100, 14, "sans-serif");
+		expect(lines).toEqual(["a very", "long line", "of text"]);
+		for (const line of lines) {
+			expect(line.length * CHAR_WIDTH).toBeLessThanOrEqual(100);
+		}
+	});
+
+	it("falls back to character breaks for a single word wider than maxWidth", () => {
+		expect(wrapLine("abcdefghij", 50, 14, "sans-serif")).toEqual(["abcde", "fghij"]);
+	});
+
+	it("treats unmeasurable text (-1 sentinel) as fitting, leaving it unwrapped", () => {
+		const original = HTMLCanvasElement.prototype.getContext;
+		HTMLCanvasElement.prototype.getContext = function () {
+			return null;
+		} as unknown as HTMLCanvasElement["getContext"];
+		try {
+			expect(wrapLine("a very long line of text that would otherwise wrap", 50, 14, "sans-serif")).toEqual([
+				"a very long line of text that would otherwise wrap",
+			]);
+		} finally {
+			HTMLCanvasElement.prototype.getContext = original;
+		}
+	});
+});
+
+describe("getTextWidth", () => {
+	it("returns -1 when no 2D canvas context is available", () => {
+		const original = HTMLCanvasElement.prototype.getContext;
+		HTMLCanvasElement.prototype.getContext = function () {
+			return null;
+		} as unknown as HTMLCanvasElement["getContext"];
+		try {
+			expect(getTextWidth("hello", 14, "sans-serif")).toBe(-1);
+		} finally {
+			HTMLCanvasElement.prototype.getContext = original;
+		}
 	});
 });
 
