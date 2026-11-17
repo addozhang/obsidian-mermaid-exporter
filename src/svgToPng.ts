@@ -186,7 +186,32 @@ function createVarLookup(
 	const computed = win.getComputedStyle(el);
 	const cache = new Map<string, string | undefined>();
 
-	const lookup = (name: string, depth = 0): string | undefined => {
+	// Declarations on the element itself take precedence over the root's.
+	const ownDeclared = new Map(
+		parseStyle(el.getAttribute("style") ?? "").filter(([prop]) =>
+			prop.startsWith("--"),
+		),
+	);
+	for (const [prop, value] of declared) {
+		if (!ownDeclared.has(prop)) ownDeclared.set(prop, value);
+	}
+
+	function readComputed(name: string): string | undefined {
+		const raw = computed.getPropertyValue(name).trim();
+		// An unresolvable variable comes back empty, or still holding a `var()`
+		// reference we cannot follow — treat both as missing.
+		return raw && !raw.includes("var(") ? raw : undefined;
+	}
+
+	/** Re-expand the declaration so nested `var()` references stay visible. */
+	function expandDeclaration(name: string, depth: number): string | undefined {
+		const decl = ownDeclared.get(name);
+		if (decl === undefined || depth >= 5) return undefined;
+		const resolved = resolveVarsInString(decl, (next) => lookup(next, depth + 1), 1).trim();
+		return resolved && !resolved.includes("var(") ? resolved : undefined;
+	}
+
+	function lookup(name: string, depth = 0): string | undefined {
 		if (cache.has(name)) return cache.get(name);
 		cache.set(name, undefined); // guards against self-referential cycles
 
@@ -197,23 +222,19 @@ function createVarLookup(
 			return override;
 		}
 
-		const fromComputed = computed.getPropertyValue(name).trim();
-		// An unresolvable variable comes back empty, or still holding a `var()`
-		// reference we cannot follow — treat both as missing.
-		let value: string | undefined =
-			fromComputed && !fromComputed.includes("var(") ? fromComputed : undefined;
-
-		if (value === undefined && depth < 5) {
-			const decl = declared.get(name);
-			if (decl !== undefined) {
-				const resolved = resolveVarsInString(decl, (next) => lookup(next, depth + 1), 1);
-				value = resolved.trim() || undefined;
-			}
-		}
+		// With an explicit palette a computed value is a trap. Pele declares
+		// aliases like `--_bg: var(--pele-bg, #fff)` on the root, and the
+		// browser has already resolved those against the *host* theme by the
+		// time we ask — so reading `--_bg` back would silently restore the
+		// colour we are trying to replace. Expand the declaration instead,
+		// which keeps the `var()` chain intact until the override answers.
+		const value = overrides
+			? (expandDeclaration(name, depth) ?? readComputed(name))
+			: (readComputed(name) ?? expandDeclaration(name, depth));
 
 		cache.set(name, value);
 		return value;
-	};
+	}
 
 	return (name) => lookup(name);
 }

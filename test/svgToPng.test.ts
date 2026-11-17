@@ -588,6 +588,42 @@ describe("export themes", () => {
 		expect(resolveBackground(svg, overrides)).toBe(DARK_PALETTE["--pele-bg"]);
 	});
 
+	it("prefers the requested palette over an already-resolved computed value", () => {
+		// A real browser resolves `--_bg: var(--pele-bg, #fff)` against the host
+		// theme, so `getPropertyValue("--_bg")` hands back the *host* colour. jsdom
+		// returns "" for every custom property, which is why this regression was
+		// invisible here and only showed up in a browser. Stub the resolved values.
+		const svg = peleSvg();
+		const real = window.getComputedStyle.bind(window);
+		const resolved: Record<string, string> = {
+			"--_bg": "#000000",
+			"--_fg": "#eeeeee",
+			"--_l": "#eeeeee",
+			"--_s": "#111111",
+			"--pele-bg": "#000000",
+			"--pele-fg": "#eeeeee",
+		};
+		const stub = ((el: Element) => ({
+			getPropertyValue: (name: string) => resolved[name] ?? real(el).getPropertyValue(name),
+		})) as unknown as typeof window.getComputedStyle;
+		window.getComputedStyle = stub;
+		try {
+			const overrides = paletteOverrides(svg, "light");
+			expect(resolveBackground(svg, overrides)).toBe(LIGHT_PALETTE["--pele-bg"]);
+
+			const node = svg.cloneNode(true) as SVGSVGElement;
+			sanitizeSvg(node, svg, overrides);
+			expect(node.querySelector("rect")?.getAttribute("fill")).toBe(
+				LIGHT_PALETTE["--pele-surface"],
+			);
+			expect(node.querySelector("rect")?.getAttribute("stroke")).toBe(
+				LIGHT_PALETTE["--pele-line"],
+			);
+		} finally {
+			window.getComputedStyle = real;
+		}
+	});
+
 	it("falls back to the declared defaults without a theme override", () => {
 		const svg = peleSvg();
 		const node = svg.cloneNode(true) as SVGSVGElement;
