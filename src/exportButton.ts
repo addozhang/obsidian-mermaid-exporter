@@ -2,8 +2,6 @@ import { Notice, setIcon } from "obsidian";
 import { svgElementToPng } from "./svgToPng";
 import type MermaidExporterPlugin from "./main";
 
-import * as fs from "fs";
-
 const POLL_INTERVAL = 200;
 const MAX_POLLS = 25; // 5 seconds max
 const MARKER_ATTR = "data-mermaid-export";
@@ -33,6 +31,7 @@ function pollForSvg(container: HTMLElement, plugin: MermaidExporterPlugin): void
 			container.removeAttribute(MARKER_ATTR);
 		}
 	}, POLL_INTERVAL);
+	plugin.registerInterval(timer);
 }
 
 function getButtonParent(container: HTMLElement): HTMLElement {
@@ -63,7 +62,7 @@ function createButtons(container: HTMLElement, svg: SVGSVGElement, plugin: Merma
 	if (parent.querySelector(".mermaid-export-btns")) return;
 
 	if (activeWindow.getComputedStyle(parent).position === "static") {
-		parent.style.position = "relative";
+		parent.classList.add("mermaid-export-host-static");
 	}
 	parent.classList.add("mermaid-export-host");
 
@@ -113,18 +112,6 @@ async function copyPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Promi
 	}
 }
 
-interface ElectronRemoteDialog {
-	showSaveDialog(options: {
-		defaultPath: string;
-		filters: { name: string; extensions: string[] }[];
-		properties: string[];
-	}): Promise<{ canceled: boolean; filePath?: string }>;
-}
-
-interface ElectronRemote {
-	dialog: ElectronRemoteDialog;
-}
-
 interface ElectronNativeImage {
 	createFromBuffer(buffer: Buffer): unknown;
 }
@@ -134,7 +121,6 @@ interface ElectronClipboard {
 }
 
 interface ElectronModule {
-	remote?: ElectronRemote;
 	clipboard?: ElectronClipboard;
 	nativeImage?: ElectronNativeImage;
 }
@@ -172,26 +158,11 @@ async function copyPngToClipboard(blob: Blob): Promise<boolean> {
 }
 
 async function savePng(blob: Blob): Promise<void> {
-	const electron = getElectron();
-	if (electron?.remote?.dialog) {
-		const result = await electron.remote.dialog.showSaveDialog({
-			defaultPath: `mermaid-diagram-${Date.now()}.png`,
-			filters: [{ name: "PNG Images", extensions: ["png"] }],
-			properties: ["showOverwriteConfirmation"],
-		});
-
-		if (result.canceled || !result.filePath) return;
-
-		const buffer = Buffer.from(await blob.arrayBuffer());
-		await fs.promises.writeFile(result.filePath, buffer);
-		new Notice(`Exported to ${result.filePath}`);
-		return;
-	}
-
-	// Fallback when the Electron remote dialog is unavailable (e.g. newer
-	// Obsidian builds): trigger a regular browser download of the blob.
+	// Obsidian exposes no "save as" dialog to plugins, and Electron's `remote`
+	// module has been gone since Electron 14 — so a browser download is the
+	// supported path, and it is what this plugin has always ended up doing.
 	const url = URL.createObjectURL(blob);
-	const anchor = activeDocument.createElement("a");
+	const anchor = createEl("a");
 	anchor.href = url;
 	anchor.download = `mermaid-diagram-${Date.now()}.png`;
 	anchor.click();

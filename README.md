@@ -7,7 +7,7 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 - **WYSIWYG Export** — Exports the diagram exactly as Obsidian renders it, including your current theme
 - **Theme-aware colors** — Works with both renderers: Mermaid (Obsidian ≤ 1.14) and Pele (Obsidian ≥ 1.15)
 - **Copy to Clipboard** — Puts the image on the system clipboard without touching the disk, ready to paste into chat, slides or a PR
-- **Native Save Dialog** — Uses the system file picker to save PNG files anywhere on disk
+- **One-Click Save** — Writes the PNG through the browser download path, so it lands in your downloads folder without a dialog getting in the way
 - **Configurable Resolution** — Scale factor from 1x to 4x (default 2x) for crisp high-DPI images
 - **Seamless UI** — Buttons fade in on hover, styled by the plugin itself rather than borrowing Obsidian's internals
 - **Works in Both Modes** — Live Preview and Reading mode
@@ -32,7 +32,7 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 1. Create a mermaid code block in any note
 2. Hover over the rendered diagram — two buttons fade in at the top-right
 3. Click the download button to save a PNG, or the copy button to put it on the clipboard
-4. If saving, choose a location in the system dialog
+4. The PNG lands in your downloads folder, named `mermaid-diagram-<timestamp>.png`
 
 Both buttons honour the export settings below, so a copied image is byte-for-byte what "Export PNG" would have written.
 

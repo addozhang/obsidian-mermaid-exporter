@@ -4,7 +4,7 @@
    reliable across Obsidian versions (see the JS-side position fix in
    exportButton.ts for the matching positioning guarantee). */
 
-.mermaid-export-host {
+.mermaid-export-host-static {
 	position: relative;
 }
 
@@ -44,13 +44,13 @@
 	color: var(--text-normal);
 }
 
-/* !important: Obsidian's own `svg.svg-icon { width: var(--icon-size) }`
-   rule (added by every setIcon() call) wins this cascade in some
-   render contexts (e.g. Reading mode) regardless of selector
-   specificity — not specific to `.edit-block-button`, it applies to
-   any icon Obsidian's API creates. */
-.mermaid-export-btn svg {
-	width: 15px !important;
-	height: 15px !important;
+/* Outranks Obsidian's own `svg.svg-icon { width: var(--icon-size) }`, which
+   setIcon() puts on the icon and which wins on equal specificity when
+   `--icon-size` is unset (width then falls back to auto and the icon fills
+   the button). Matching that rule's specificity plus two classes is enough,
+   so no `!important` is needed. */
+.mermaid-export-btns .mermaid-export-btn svg {
+	width: 15px;
+	height: 15px;
 	pointer-events: none;
 }
