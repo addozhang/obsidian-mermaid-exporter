@@ -21,6 +21,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Same rules the community-directory review runs, so a rejection shows
+      # up here instead of in a review email.
+      - name: Lint
+        run: npm run lint
+
       - name: Test
         run: npm run test:coverage
 
