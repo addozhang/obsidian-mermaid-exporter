@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-mermaid-exporter",
-	"version": "1.4.3",
+	"version": "1.4.4",
 	"description": "Export rendered Mermaid diagrams as PNG images",
 	"author": "addozhang",
 	"main": "main.js",
@@ -11,7 +11,8 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"lint": "eslint ."
+		"lint": "npm run typecheck && eslint . && stylelint styles.css",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"devDependencies": {
 		"@types/jsdom": "^28.0.3",
@@ -23,6 +24,7 @@
 		"eslint-plugin-obsidianmd": "^0.6.0",
 		"jsdom": "^29.1.1",
 		"obsidian": "obsidianmd/obsidian-api",
+		"stylelint": "^18.0.0",
 		"typescript": "^5.0.0",
 		"typescript-eslint": "^8.73.0",
 		"vitest": "^2.1.9"

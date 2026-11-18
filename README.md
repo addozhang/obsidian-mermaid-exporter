@@ -51,6 +51,12 @@ Pele drives every colour through CSS variables, so switching theme is a recolour
 
 This applies to diagrams drawn by Pele (Obsidian 1.15 and later). Diagrams rendered by the older Mermaid engine bake their colours into the SVG, so they always export as rendered.
 
+## Privacy
+
+- **No network access.** The plugin makes no requests and collects no telemetry. It works entirely on the diagram already rendered in the note.
+- **The clipboard is write-only.** The copy button puts the finished PNG on the system clipboard and reads nothing back — your clipboard contents are never inspected, stored or sent anywhere.
+- **No filesystem access.** The plugin never opens, reads or writes a path directly. Saving hands the PNG to the browser download path, so it lands in your downloads folder like any other download.
+
 ## Requirements
 
 - Obsidian ≥ 1.5.0
@@ -70,6 +76,7 @@ cd obsidian-mermaid-exporter
 npm install
 npm run dev    # watch mode
 npm run build  # production build
+npm run lint   # typecheck + the community-review lint rules (TS/JS and CSS)
 ```
 
 To test locally, symlink or copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/mermaid-exporter/` directory.
