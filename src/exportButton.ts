@@ -20,14 +20,14 @@ export function attachExportButton(container: HTMLElement, plugin: MermaidExport
 
 function pollForSvg(container: HTMLElement, plugin: MermaidExporterPlugin): void {
 	let polls = 0;
-	const timer = activeWindow.setInterval(() => {
+	const timer = window.setInterval(() => {
 		polls++;
 		const svg = container.querySelector<SVGSVGElement>("svg");
 		if (svg) {
-			activeWindow.clearInterval(timer);
+			window.clearInterval(timer);
 			createButtons(container, svg, plugin);
 		} else if (polls >= MAX_POLLS) {
-			activeWindow.clearInterval(timer);
+			window.clearInterval(timer);
 			container.removeAttribute(MARKER_ATTR);
 		}
 	}, POLL_INTERVAL);
@@ -113,7 +113,21 @@ async function copyPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Promi
 }
 
 interface ElectronNativeImage {
-	createFromBuffer(buffer: Buffer): unknown;
+	createFromBuffer(buffer: Uint8Array): unknown;
+}
+
+/** Node's `Buffer`, reached off the global so the plugin needs no @types/node. */
+interface NodeBufferGlobal {
+	from(data: ArrayBuffer): Uint8Array;
+}
+
+/**
+ * Electron's `nativeImage.createFromBuffer` throws unless it is handed a real
+ * Node Buffer, so this keeps the runtime value a Buffer while the type stays a
+ * plain `Uint8Array` — no dependency on Node's type definitions.
+ */
+function toNodeBuffer(data: ArrayBuffer): Uint8Array | undefined {
+	return (window as { Buffer?: NodeBufferGlobal }).Buffer?.from(data);
 }
 
 interface ElectronClipboard {
@@ -142,9 +156,13 @@ async function copyPngToClipboard(blob: Blob): Promise<boolean> {
 	const electron = getElectron();
 	if (electron?.clipboard && electron?.nativeImage) {
 		try {
-			const buffer = Buffer.from(await blob.arrayBuffer());
-			electron.clipboard.writeImage(electron.nativeImage.createFromBuffer(buffer));
-			return true;
+			const buffer = toNodeBuffer(await blob.arrayBuffer());
+			if (buffer) {
+				electron.clipboard.writeImage(
+					electron.nativeImage.createFromBuffer(buffer),
+				);
+				return true;
+			}
 		} catch (err) {
 			console.error("mermaid-exporter: electron clipboard failed", err);
 		}
@@ -166,6 +184,6 @@ async function savePng(blob: Blob): Promise<void> {
 	anchor.href = url;
 	anchor.download = `mermaid-diagram-${Date.now()}.png`;
 	anchor.click();
-	activeWindow.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+	window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 	new Notice("Saved via browser download");
 }

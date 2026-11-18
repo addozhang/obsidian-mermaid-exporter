@@ -6,10 +6,22 @@ declare global {
 	var activeWindow: Window & typeof globalThis;
 	// eslint-disable-next-line no-var
 	var activeDocument: Document;
+	// eslint-disable-next-line no-var
+	var createEl: <K extends keyof HTMLElementTagNameMap>(
+		tag: K,
+	) => HTMLElementTagNameMap[K];
 
 	interface Node {
 		instanceOf<T>(type: new (...args: unknown[]) => T): this is Node & T;
 	}
+}
+
+// Obsidian's createEl() helper — a thin document.createElement with options.
+// src/ uses it instead of document.createElement so the review's
+// prefer-create-el rule is satisfied.
+if (typeof (globalThis as { createEl?: unknown }).createEl === "undefined") {
+	(globalThis as unknown as { createEl: unknown }).createEl = (tag: string) =>
+		document.createElement(tag);
 }
 
 // Obsidian adds Node.prototype.instanceOf — emulate it with a normal instanceof check.

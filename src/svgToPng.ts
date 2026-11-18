@@ -84,7 +84,7 @@ export function sanitizeSvg(
 }
 
 export function getTextWidth(text: string, fontSize: number, fontFamily: string): number {
-	const ctx = activeDocument.createElement("canvas").getContext("2d");
+	const ctx = createEl("canvas").getContext("2d");
 	if (!ctx) return -1;
 	ctx.font = `${fontSize}px ${fontFamily}`;
 	return ctx.measureText(text).width;
@@ -407,7 +407,7 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 
 		const wrappedLines = lines.flatMap((line) => wrapLine(line, width, fontSize, fontFamily));
 
-		const textEl = activeDocument.createElementNS(SVG_NS, "text");
+		const textEl = activeDocument.createElementNS<"text">(SVG_NS, "text");
 		textEl.setAttribute("text-anchor", "middle");
 		textEl.setAttribute("font-size", String(fontSize));
 		textEl.setAttribute("font-family", fontFamily);
@@ -425,7 +425,7 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 			const totalTextHeight = lineHeight * wrappedLines.length;
 			const startY = y + (height - totalTextHeight) / 2 + fontSize;
 			for (let i = 0; i < wrappedLines.length; i++) {
-				const tspan = activeDocument.createElementNS(SVG_NS, "tspan");
+				const tspan = activeDocument.createElementNS<"tspan">(SVG_NS, "tspan");
 				tspan.setAttribute("x", String(centerX));
 				tspan.setAttribute("y", String(startY + i * lineHeight));
 				tspan.textContent = wrappedLines[i];

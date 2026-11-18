@@ -142,7 +142,7 @@ function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 			this.scheduled = true;
 			// Defer until after CodeMirror has finished painting the
 			// rendered mermaid block into `.cm-preview-code-block`.
-			activeWindow.requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
 				this.scheduled = false;
 				this.scan();
 			});
