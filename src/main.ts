@@ -5,12 +5,13 @@ import {
 	DEFAULT_SETTINGS,
 	MermaidExporterSettingTab,
 } from "./settings";
-import { attachExportButton } from "./exportButton";
+import { attachExportButton, cleanupExportButtons } from "./exportButton";
 
 const MERMAID_SELECTOR = ".mermaid, .block-language-mermaid";
 
 export default class MermaidExporterPlugin extends Plugin {
 	settings: MermaidExporterSettings = DEFAULT_SETTINGS;
+	private pendingObservers = new Set<() => void>();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -20,14 +21,16 @@ export default class MermaidExporterPlugin extends Plugin {
 		// Obsidian's built-in mermaid renderer replaces a placeholder
 		// `<pre>` with a `<div class="mermaid">` asynchronously, often
 		// *after* this post-processor first runs. We synchronously try
-		// the current subtree, and if no mermaid block is present yet
-		// we attach a short-lived MutationObserver scoped to `el` only
-		// (never `document.body`) that waits for the replacement and
-		// disconnects itself once it fires or a 5s budget elapses.
+		// the current subtree, and only when the block could actually
+		// host a code block do we attach a short-lived MutationObserver
+		// scoped to `el` (never `document.body`) that disconnects once
+		// it fires, on unload, or after a 5s budget.
 		this.registerMarkdownPostProcessor(
 			(el: HTMLElement, _ctx: MarkdownPostProcessorContext) => {
 				if (this.processMermaidBlocks(el)) return;
-				this.observeForLateMermaid(el);
+				if (this.mightBecomeMermaid(el)) {
+					this.observeForLateMermaid(el);
+				}
 			},
 			100,
 		);
@@ -36,6 +39,22 @@ export default class MermaidExporterPlugin extends Plugin {
 		// Each popout window has its own editor view, so this automatically
 		// covers popout windows without a global document observer.
 		this.registerEditorExtension(buildLivePreviewExtension(this));
+	}
+
+	onunload(): void {
+		for (const finish of Array.from(this.pendingObservers)) {
+			finish();
+		}
+
+		const docs = new Set<Document>();
+		if (typeof activeDocument !== "undefined") docs.add(activeDocument);
+		this.app?.workspace?.iterateAllLeaves?.((leaf) => {
+			const doc = leaf.view?.containerEl?.ownerDocument;
+			if (doc) docs.add(doc);
+		});
+		for (const doc of docs) {
+			cleanupExportButtons(doc);
+		}
 	}
 
 	/**
@@ -62,13 +81,24 @@ export default class MermaidExporterPlugin extends Plugin {
 	}
 
 	/**
+	 * Quick pre-filter so we don't attach a MutationObserver and 5s timer
+	 * to every paragraph, heading, or list rendered in Reading mode.
+	 */
+	private mightBecomeMermaid(el: HTMLElement): boolean {
+		return (
+			el.tagName === "PRE" ||
+			el.classList?.contains("el-pre") ||
+			el.querySelector("pre, code.language-mermaid") !== null
+		);
+	}
+
+	/**
 	 * Scoped, short-lived MutationObserver as a fallback for the
 	 * reading-mode case where Obsidian renders the mermaid block
 	 * asynchronously *after* the post-processor first runs. Scope is
 	 * `el` (a single rendered block container), never `document.body`,
-	 * and the observer auto-disconnects on the first hit or after a
-	 * 5-second budget — so it does not contribute to global mutation
-	 * traffic the way the old plugin-wide observer did.
+	 * and the observer auto-disconnects on the first hit, on unload,
+	 * or after a 5-second budget.
 	 */
 	private observeForLateMermaid(el: HTMLElement): void {
 		const win = el.ownerDocument?.defaultView ?? activeWindow;
@@ -78,7 +108,9 @@ export default class MermaidExporterPlugin extends Plugin {
 			done = true;
 			observer.disconnect();
 			win.clearTimeout(timeoutId);
+			this.pendingObservers.delete(finish);
 		};
+		this.pendingObservers.add(finish);
 		const observer = new MutationObserver(() => {
 			if (this.processMermaidBlocks(el)) finish();
 		});
@@ -116,9 +148,9 @@ export default class MermaidExporterPlugin extends Plugin {
  * block it finds already marked, and rescans are coalesced into one
  * `requestAnimationFrame` per burst of mutations.
  */
-function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
+export function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 	class MermaidExportViewPlugin implements PluginValue {
-		private scheduled = false;
+		private rafId: number | null = null;
 		private observer: MutationObserver;
 
 		constructor(private view: EditorView) {
@@ -135,15 +167,20 @@ function buildLivePreviewExtension(plugin: MermaidExporterPlugin) {
 
 		destroy(): void {
 			this.observer.disconnect();
+			if (this.rafId !== null) {
+				const win = this.view.dom.ownerDocument?.defaultView ?? window;
+				win.cancelAnimationFrame(this.rafId);
+				this.rafId = null;
+			}
 		}
 
 		private schedule(): void {
-			if (this.scheduled) return;
-			this.scheduled = true;
+			if (this.rafId !== null) return;
+			const win = this.view.dom.ownerDocument?.defaultView ?? window;
 			// Defer until after CodeMirror has finished painting the
 			// rendered mermaid block into `.cm-preview-code-block`.
-			window.requestAnimationFrame(() => {
-				this.scheduled = false;
+			this.rafId = win.requestAnimationFrame(() => {
+				this.rafId = null;
 				this.scan();
 			});
 		}

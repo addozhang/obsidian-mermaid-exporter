@@ -32,6 +32,9 @@
 	justify-content: center;
 	width: 26px;
 	height: 26px;
+	padding: 0;
+	margin: 0;
+	border: 0;
 	border-radius: var(--radius-s);
 	background-color: var(--background-secondary-alt);
 	color: var(--text-muted);
