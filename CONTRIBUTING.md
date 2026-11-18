@@ -28,7 +28,7 @@ Open an issue at <https://github.com/addozhang/obsidian-mermaid-exporter/issues>
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes, keeping commits focused and atomic
-4. Run `npm run build` and `npx tsc --noEmit` — both must pass
+4. Run `npm run lint`, `npm test`, and `npm run build` — all must pass
 5. Commit using [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat: add transparent background option`)
 6. Push the branch (`git push origin feature/your-feature`)
 7. Open a Pull Request describing the motivation and the change
@@ -41,8 +41,8 @@ Open an issue at <https://github.com/addozhang/obsidian-mermaid-exporter/issues>
 
 ## Releasing (maintainers)
 
-1. Bump `version` in `manifest.json` and `package.json`
-2. Commit and tag (`git tag v1.0.4 && git push --tags`)
+1. Bump `version` in `manifest.json` and `package.json`, and add the matching entry in `versions.json`
+2. Commit and tag **without** a `v` prefix (`git tag 1.4.4 && git push --tags`) — Obsidian requires the tag to match `manifest.json`'s `version` verbatim
 3. The release workflow publishes `main.js`, `manifest.json`, and `styles.css` with build provenance attestation
 
 ## License

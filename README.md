@@ -1,16 +1,21 @@
 # Obsidian Mermaid Exporter
 
-Export rendered mermaid diagrams as PNG images directly from Obsidian.
+[![Latest Release](https://img.shields.io/github/v/release/addozhang/obsidian-mermaid-exporter)](https://github.com/addozhang/obsidian-mermaid-exporter/releases/latest)
+[![CI](https://github.com/addozhang/obsidian-mermaid-exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/addozhang/obsidian-mermaid-exporter/actions/workflows/ci.yml)
+![Obsidian 1.5.0+](https://img.shields.io/badge/Obsidian-1.5.0%2B-7C3AED)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Export rendered Mermaid diagrams from Obsidian as high-DPI PNG images or copy them directly to the clipboard.
 
 ## Features
 
 - **WYSIWYG Export** — Exports the diagram exactly as Obsidian renders it, including your current theme
-- **Theme-aware colors** — Works with both renderers: Mermaid (Obsidian ≤ 1.14) and Pele (Obsidian ≥ 1.15)
-- **Copy to Clipboard** — Puts the image on the system clipboard without touching the disk, ready to paste into chat, slides or a PR
+- **Theme-aware colors & Export Themes** — Works with both renderers: Mermaid (Obsidian ≤ 1.14) and Pele (Obsidian ≥ 1.15), with optional fixed Light or Dark export palettes
+- **Copy to Clipboard** — Puts the image on the system clipboard without touching the disk, ready to paste into chat, slides, or a PR
 - **One-Click Save** — Writes the PNG through the browser download path, so it lands in your downloads folder without a dialog getting in the way
 - **Configurable Resolution** — Scale factor from 1x to 4x (default 2x) for crisp high-DPI images
-- **Seamless UI** — Buttons fade in on hover, styled by the plugin itself rather than borrowing Obsidian's internals
-- **Works in Both Modes** — Live Preview and Reading mode
+- **Seamless & Accessible UI** — Keyboard-focusable buttons fade in on hover, styled independently of Obsidian's internal classes
+- **Works Everywhere** — Live Preview, Reading mode, and popout windows
 
 ## Installation
 
@@ -19,6 +24,13 @@ Export rendered mermaid diagrams as PNG images directly from Obsidian.
 1. Open **Settings → Community Plugins → Browse**
 2. Search for **Mermaid Exporter**
 3. Click **Install**, then **Enable**
+
+### With BRAT (Beta / Pre-release)
+
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin from Community Plugins
+2. Open **Settings → BRAT → Add Beta plugin**
+3. Enter `addozhang/obsidian-mermaid-exporter` and click **Add Plugin**
+4. Enable **Mermaid Exporter** in **Settings → Community Plugins**
 
 ### Manual Installation
 
@@ -74,12 +86,14 @@ Mermaid's pre-1.15 output is still handled: HTML labels inside `<foreignObject>`
 git clone https://github.com/addozhang/obsidian-mermaid-exporter.git
 cd obsidian-mermaid-exporter
 npm install
-npm run dev    # watch mode
-npm run build  # production build
-npm run lint   # typecheck + the community-review lint rules (TS/JS and CSS)
+npm run dev            # watch mode
+npm run build          # production build
+npm run lint           # typecheck + community-review lint rules (TS/JS and CSS)
+npm test               # unit tests (Vitest + jsdom)
+npm run test:coverage  # unit tests with coverage report
 ```
 
-To test locally, symlink or copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/mermaid-exporter/` directory.
+To test locally, symlink or copy `main.js`, `manifest.json`, and `styles.css` into your vault's `.obsidian/plugins/mermaid-exporter/` directory. For live Obsidian end-to-end tests over Chrome DevTools Protocol, see [scripts/e2e/README.md](scripts/e2e/README.md).
 
 ## Contributing
 
