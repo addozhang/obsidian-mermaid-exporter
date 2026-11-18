@@ -49,6 +49,16 @@ function getButtonParent(container: HTMLElement): HTMLElement {
 	return container;
 }
 
+export function cleanupExportButtons(doc: Document): void {
+	doc.querySelectorAll(".mermaid-export-btns").forEach((el) => el.remove());
+	doc.querySelectorAll(".mermaid-export-host, .mermaid-export-host-static").forEach((el) => {
+		el.classList.remove("mermaid-export-host", "mermaid-export-host-static");
+	});
+	doc.querySelectorAll(`[${MARKER_ATTR}]`).forEach((el) => {
+		el.removeAttribute(MARKER_ATTR);
+	});
+}
+
 /**
  * Build the button group (export PNG / copy image). Styling is fully
  * self-contained in styles.css rather than reusing Obsidian's internal
@@ -61,38 +71,48 @@ function createButtons(container: HTMLElement, svg: SVGSVGElement, plugin: Merma
 
 	if (parent.querySelector(".mermaid-export-btns")) return;
 
-	if (activeWindow.getComputedStyle(parent).position === "static") {
+	const win = parent.ownerDocument?.defaultView ?? activeWindow;
+	if (win.getComputedStyle(parent).position === "static") {
 		parent.classList.add("mermaid-export-host-static");
 	}
 	parent.classList.add("mermaid-export-host");
 
 	const bar = parent.createDiv({ cls: "mermaid-export-btns" });
 
-	const exportBtn = bar.createDiv({ cls: "mermaid-export-btn" });
-	exportBtn.setAttribute("aria-label", "Export as PNG");
+	const exportBtn = bar.createEl("button", {
+		cls: "mermaid-export-btn",
+		attr: { type: "button", "aria-label": "Export as PNG" },
+	});
 	setIcon(exportBtn, "download");
 
-	const copyBtn = bar.createDiv({ cls: "mermaid-export-btn" });
-	copyBtn.setAttribute("aria-label", "Copy image to clipboard");
+	const copyBtn = bar.createEl("button", {
+		cls: "mermaid-export-btn",
+		attr: { type: "button", "aria-label": "Copy image to clipboard" },
+	});
 	setIcon(copyBtn, "copy");
+
+	const getCurrentSvg = (): SVGSVGElement | null =>
+		container.querySelector<SVGSVGElement>("svg") ?? (svg.isConnected ? svg : null);
 
 	plugin.registerDomEvent(exportBtn, "click", (e) => {
 		e.stopPropagation();
 		e.preventDefault();
-		void exportPng(svg, plugin);
+		const target = getCurrentSvg();
+		if (target) void exportPng(target, plugin);
 	});
 
 	plugin.registerDomEvent(copyBtn, "click", (e) => {
 		e.stopPropagation();
 		e.preventDefault();
-		void copyPng(svg, plugin);
+		const target = getCurrentSvg();
+		if (target) void copyPng(target, plugin);
 	});
 }
 
 async function exportPng(svg: SVGSVGElement, plugin: MermaidExporterPlugin): Promise<void> {
 	try {
 		const blob = await svgElementToPng(svg, plugin.settings.scale, plugin.settings.theme);
-		await savePng(blob);
+		savePng(blob);
 	} catch (err) {
 		new Notice(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
@@ -175,7 +195,7 @@ async function copyPngToClipboard(blob: Blob): Promise<boolean> {
 	return false;
 }
 
-async function savePng(blob: Blob): Promise<void> {
+function savePng(blob: Blob): void {
 	// Obsidian exposes no "save as" dialog to plugins, and Electron's `remote`
 	// module has been gone since Electron 14 — so a browser download is the
 	// supported path, and it is what this plugin has always ended up doing.

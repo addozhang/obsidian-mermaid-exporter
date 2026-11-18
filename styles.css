@@ -32,6 +32,9 @@
 	justify-content: center;
 	width: 26px;
 	height: 26px;
+	padding: 0;
+	margin: 0;
+	border: 0;
 	border-radius: var(--radius-s);
 	background-color: var(--background-secondary-alt);
 	color: var(--text-muted);
@@ -47,8 +50,8 @@
 /* Outranks Obsidian's own `svg.svg-icon { width: var(--icon-size) }`, which
    setIcon() puts on the icon and which wins on equal specificity when
    `--icon-size` is unset (width then falls back to auto and the icon fills
-   the button). Matching that rule's specificity plus two classes is enough,
-   so no `!important` is needed. */
+   the button). Two extra classes on top of that selector are enough to win
+   outright, so the declaration needs no override flag. */
 .mermaid-export-btns .mermaid-export-btn svg {
 	width: 15px;
 	height: 15px;

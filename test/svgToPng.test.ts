@@ -83,6 +83,11 @@ describe("extractTextLines", () => {
 		const fo = makeForeignObject("<div><br>after</div>");
 		expect(extractTextLines(fo)).toEqual(["after"]);
 	});
+
+	it("preserves spaces between adjacent inline elements", () => {
+		const fo = makeForeignObject("<span>Hello <b>world</b> and <i>more</i></span>");
+		expect(extractTextLines(fo)).toEqual(["Hello world and more"]);
+	});
 });
 
 describe("stripRootCss", () => {
@@ -169,6 +174,20 @@ describe("fixDimensions", () => {
 		fixDimensions(svg);
 		expect(svg.getAttribute("width")).toBe("100");
 		expect(svg.getAttribute("height")).toBe("50");
+	});
+
+	it("falls back to 1200x800 when viewBox has invalid or non-positive dimensions", () => {
+		const bad = makeSvg();
+		bad.setAttribute("viewBox", "0 0 foo 50");
+		fixDimensions(bad);
+		expect(bad.getAttribute("width")).toBe("1200");
+		expect(bad.getAttribute("height")).toBe("800");
+
+		const zero = makeSvg();
+		zero.setAttribute("viewBox", "0 0 0 50");
+		fixDimensions(zero);
+		expect(zero.getAttribute("width")).toBe("1200");
+		expect(zero.getAttribute("height")).toBe("800");
 	});
 });
 
@@ -339,6 +358,25 @@ describe("wrapLine", () => {
 
 	it("falls back to character breaks for a single word wider than maxWidth", () => {
 		expect(wrapLine("abcdefghij", 50, 14, "sans-serif")).toEqual(["abcde", "fghij"]);
+	});
+
+	it("reuses a single canvas context across all measurements in a wrapLine call", () => {
+		let contextCalls = 0;
+		const origGetContext = HTMLCanvasElement.prototype.getContext;
+		HTMLCanvasElement.prototype.getContext = function (...args: unknown[]) {
+			contextCalls++;
+			return origGetContext.apply(this, args as [contextId: "2d"]);
+		} as HTMLCanvasElement["getContext"];
+		try {
+			expect(wrapLine("abcdefghijklmno", 50, 14, "sans-serif")).toEqual([
+				"abcde",
+				"fghij",
+				"klmno",
+			]);
+			expect(contextCalls).toBe(1);
+		} finally {
+			HTMLCanvasElement.prototype.getContext = origGetContext;
+		}
 	});
 
 	it("treats unmeasurable text (-1 sentinel) as fitting, leaving it unwrapped", () => {

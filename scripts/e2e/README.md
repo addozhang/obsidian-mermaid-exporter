@@ -1,6 +1,6 @@
 # CDP-based End-to-End Tests
 
-These scripts drive a real Obsidian instance over the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) to validate the plugin against real mermaid rendering, real popout windows, and a real Electron save dialog. Use them when:
+These scripts drive a real Obsidian instance over the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) to validate the plugin against real mermaid rendering, real popout windows, and the browser-download PNG export flow. Use them when:
 
 - You touched `src/main.ts`, `src/exportButton.ts`, or `src/svgToPng.ts` and want to confirm Obsidian still injects the export button and produces a valid PNG.
 - You want to verify the acceptance criteria for [#4 (popout windows)](https://github.com/addozhang/obsidian-mermaid-exporter/issues/4) and [#5 (no global MutationObserver)](https://github.com/addozhang/obsidian-mermaid-exporter/issues/5).
@@ -58,8 +58,8 @@ Multi-statement scripts must be wrapped in an `async` IIFE that returns a JSON-s
 | [`cdp-e2e-architecture.js`](./cdp-e2e-architecture.js) | Asserts the post-refactor invariants for issue #5: no `observer` field on the plugin instance, no `MutationObserver` / `.observe(` in the shipped bundle, `processMermaidBlocks` is reachable. |
 | [`cdp-e2e-reading-mode.js`](./cdp-e2e-reading-mode.js) | Creates a temp mermaid note, opens it, switches between Live Preview and Reading mode, asserts the export button is injected in both. |
 | [`cdp-e2e-popout.js`](./cdp-e2e-popout.js) | Covers issue #4 acceptance: (a) open note then `moveLeafToPopout` — button appears in the popout document; (b) open popout first, then open the note in it — button still appears. Both confirm the editor-extension-per-view design follows popouts automatically. |
-| [`cdp-e2e-export.js`](./cdp-e2e-export.js) | Monkey-patches `electron.remote.dialog.showSaveDialog` to return a deterministic temp path, clicks the export button, polls until a valid PNG (with `89 50 4E 47` header) is written to disk, then restores the dialog. |
-| [`cdp-e2e-all.js`](./cdp-e2e-all.js) | Runs all of the above in one round-trip and returns a combined JSON summary with a single top-level `ok` boolean. Preferred for routine runs. |
+| [`cdp-e2e-export.js`](./cdp-e2e-export.js) | Intercepts `URL.createObjectURL` and `<a download>` clicks, clicks the export button, verifies a valid PNG Blob (with `89 50 4E 47` header) and `mermaid-diagram-<timestamp>.png` filename without writing to `~/Downloads`, then restores both globals. |
+| [`cdp-e2e-all.js`](./cdp-e2e-all.js) | Runs the full suite in one round-trip — architecture invariants, Reading/Live Preview, popout windows, PNG download export, Copy to Clipboard, 1x vs 2x scale dimensions, Light/Dark export theme pixels, and disable/unload DOM cleanup — and returns a combined JSON summary with a single top-level `ok` boolean. Preferred for routine runs. |
 
 Each script has a header comment block documenting what it does and any caveats.
 
@@ -110,7 +110,7 @@ A successful run prints something like:
 - **`require("obsidian")` and dynamic `import()` of the bundle don't work** inside CDP — `obsidian` is an esbuild external and resolves to nothing at runtime in this context. Use the plugin instance (`app.plugins.plugins["mermaid-exporter"]`) for everything you need from the API.
 - **Mermaid renders the SVG asynchronously.** Every assertion that looks at a rendered diagram must `waitFor` the SVG / button instead of querying once. The helper pattern is in every script.
 - **`ownerDocument` differs between popouts and the main window.** Always query off `leaf.view.containerEl.ownerDocument`, never `document` / `activeDocument` — `activeDocument` resolves to whichever window is focused at call time, which is exactly the bug we fixed in #4.
-- **The export flow needs the Electron remote.** Tests that exercise the export click monkey-patch `activeWindow.electron.remote.dialog.showSaveDialog` to skip the native OS dialog. Always restore it in `finally`.
+- **The export test intercepts browser downloads in-memory.** Tests that exercise the export click monkey-patch `URL.createObjectURL` and `HTMLAnchorElement.prototype.click` to capture the PNG `Blob` without writing to `~/Downloads`. Always restore both in `finally`.
 - **macOS TCC blocks `~/Documents`** for non-Obsidian processes; if you run scripts that touch vault files outside Obsidian's adapter, place your test vault under `~/iCloud Drive/` or another accessible location.
 - **Don't call command `callback` directly.** This plugin doesn't register any commands, but in general use `app.commands.executeCommandById(...)` rather than poking `.callback`.
 
@@ -120,7 +120,6 @@ All scripts:
 
 - Prefix temp notes with `__me-e2e-` so they are easy to identify and prune.
 - Delete temp notes via `app.vault.delete(file)` in a `finally` block.
-- Delete temp PNGs from `os.tmpdir()` in a `finally` block.
-- Restore any monkey-patched globals (e.g. `electron.remote.dialog.showSaveDialog`) in a `finally` block.
+- Restore any monkey-patched globals (e.g. `URL.createObjectURL`, `HTMLAnchorElement.prototype.click`) in a `finally` block.
 
 If a script crashes mid-run, residual `__me-e2e-*.md` files in your vault are harmless to delete by hand.

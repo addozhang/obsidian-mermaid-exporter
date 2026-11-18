@@ -83,17 +83,32 @@ export function sanitizeSvg(
 	fixDimensions(svgEl);
 }
 
-export function getTextWidth(text: string, fontSize: number, fontFamily: string): number {
-	const ctx = createEl("canvas").getContext("2d");
-	if (!ctx) return -1;
-	ctx.font = `${fontSize}px ${fontFamily}`;
-	return ctx.measureText(text).width;
+function getMeasureContext(): CanvasRenderingContext2D | null {
+	return createEl("canvas").getContext("2d");
+}
+
+export function getTextWidth(
+	text: string,
+	fontSize: number,
+	fontFamily: string,
+	ctx?: CanvasRenderingContext2D | null,
+): number {
+	const context = ctx === undefined ? getMeasureContext() : ctx;
+	if (!context) return -1;
+	context.font = `${fontSize}px ${fontFamily}`;
+	return context.measureText(text).width;
 }
 
 // A width of -1 means measurement isn't available (e.g. no canvas context) — treat
 // everything as fitting rather than wrapping blindly.
-function fits(text: string, maxWidth: number, fontSize: number, fontFamily: string): boolean {
-	const w = getTextWidth(text, fontSize, fontFamily);
+function fits(
+	text: string,
+	maxWidth: number,
+	fontSize: number,
+	fontFamily: string,
+	ctx: CanvasRenderingContext2D | null,
+): boolean {
+	const w = getTextWidth(text, fontSize, fontFamily, ctx);
 	return w < 0 || w <= maxWidth;
 }
 
@@ -101,14 +116,22 @@ function fits(text: string, maxWidth: number, fontSize: number, fontFamily: stri
 // they're replaced with plain SVG <text>. Re-wrap each line by word (falling back to
 // character breaks for a single word wider than the box) so long labels wrap instead of
 // overflowing their node.
-export function wrapLine(text: string, maxWidth: number, fontSize: number, fontFamily: string): string[] {
-	if (maxWidth <= 0 || fits(text, maxWidth, fontSize, fontFamily)) return [text];
+export function wrapLine(
+	text: string,
+	maxWidth: number,
+	fontSize: number,
+	fontFamily: string,
+	ctx?: CanvasRenderingContext2D | null,
+): string[] {
+	if (maxWidth <= 0) return [text];
+	const measureCtx = ctx === undefined ? getMeasureContext() : ctx;
+	if (fits(text, maxWidth, fontSize, fontFamily, measureCtx)) return [text];
 
 	const lines: string[] = [];
 	let current = "";
 	for (const word of text.split(" ")) {
 		const candidate = current ? `${current} ${word}` : word;
-		if (fits(candidate, maxWidth, fontSize, fontFamily)) {
+		if (fits(candidate, maxWidth, fontSize, fontFamily, measureCtx)) {
 			current = candidate;
 			continue;
 		}
@@ -116,14 +139,14 @@ export function wrapLine(text: string, maxWidth: number, fontSize: number, fontF
 			lines.push(current);
 			current = "";
 		}
-		if (fits(word, maxWidth, fontSize, fontFamily)) {
+		if (fits(word, maxWidth, fontSize, fontFamily, measureCtx)) {
 			current = word;
 			continue;
 		}
 		// The word itself is too wide — break it at character boundaries.
 		let chunk = "";
 		for (const ch of word) {
-			if (fits(chunk + ch, maxWidth, fontSize, fontFamily) || !chunk) {
+			if (fits(chunk + ch, maxWidth, fontSize, fontFamily, measureCtx) || !chunk) {
 				chunk += ch;
 			} else {
 				lines.push(chunk);
@@ -385,6 +408,8 @@ export function resolveBackground(
 export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSVGElement): void {
 	const clonedFOs = Array.from(svgEl.querySelectorAll("foreignObject"));
 	const originalFOs = Array.from(originalSvgEl.querySelectorAll("foreignObject"));
+	const win = originalSvgEl.ownerDocument?.defaultView ?? activeWindow;
+	const measureCtx = clonedFOs.length > 0 ? getMeasureContext() : null;
 
 	clonedFOs.forEach((fo, idx) => {
 		const x = parseFloat(fo.getAttribute("x") || "0");
@@ -400,12 +425,14 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 
 		const originalFo = originalFOs[idx];
 		const styledEl = originalFo?.querySelector<HTMLElement>("span, div, p") ?? null;
-		const computed = styledEl ? activeWindow.getComputedStyle(styledEl) : null;
+		const computed = styledEl ? win.getComputedStyle(styledEl) : null;
 		const fontFamily = computed?.fontFamily || "sans-serif";
 		const fill = computed?.color || "#333";
 		const fontSize = parseFloat(computed?.fontSize || "14");
 
-		const wrappedLines = lines.flatMap((line) => wrapLine(line, width, fontSize, fontFamily));
+		const wrappedLines = lines.flatMap((line) =>
+			wrapLine(line, width, fontSize, fontFamily, measureCtx),
+		);
 
 		const textEl = activeDocument.createElementNS<"text">(SVG_NS, "text");
 		textEl.setAttribute("text-anchor", "middle");
@@ -445,22 +472,24 @@ export function replaceForeignObjects(svgEl: SVGSVGElement, originalSvgEl: SVGSV
 export function extractTextLines(fo: Element): string[] {
 	const lines: string[] = [];
 	let current = "";
+	const flush = () => {
+		const trimmed = current.replace(/\s+/g, " ").trim();
+		if (trimmed) lines.push(trimmed);
+		current = "";
+	};
 	const walk = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			current += node.textContent?.trim() || "";
+			current += node.textContent || "";
 		} else if (node.instanceOf(Element)) {
 			if (node.tagName.toLowerCase() === "br") {
-				if (current) {
-					lines.push(current);
-					current = "";
-				}
+				flush();
 			} else {
 				node.childNodes.forEach(walk);
 			}
 		}
 	};
 	fo.childNodes.forEach(walk);
-	if (current) lines.push(current);
+	flush();
 	return lines;
 }
 
@@ -471,12 +500,17 @@ export function stripRootCss(svgEl: SVGSVGElement): void {
 }
 
 export function fixDimensions(svgEl: SVGSVGElement): void {
-	const viewBox = svgEl.getAttribute("viewBox")?.split(/[\s,]+/).map(Number);
+	const viewBox = svgEl.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number);
 	const isAbsolute = (v: string | null) =>
 		v != null && parseFloat(v) > 0 && /^\d+(\.\d+)?(px)?$/.test(v.trim());
 
 	if (!isAbsolute(svgEl.getAttribute("width")) || !isAbsolute(svgEl.getAttribute("height"))) {
-		if (viewBox?.length === 4) {
+		if (
+			viewBox?.length === 4 &&
+			viewBox.every(Number.isFinite) &&
+			viewBox[2] > 0 &&
+			viewBox[3] > 0
+		) {
 			svgEl.setAttribute("width", String(viewBox[2]));
 			svgEl.setAttribute("height", String(viewBox[3]));
 		} else {
