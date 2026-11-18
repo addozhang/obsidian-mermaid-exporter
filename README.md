@@ -7,6 +7,8 @@
 
 Export rendered Mermaid diagrams from Obsidian as high-DPI PNG images or copy them directly to the clipboard.
 
+![Hovering over a rendered Mermaid diagram reveals Export PNG and Copy buttons](docs/screenshot-hover.png)
+
 ## Features
 
 - **WYSIWYG Export** — Exports the diagram exactly as Obsidian renders it, including your current theme
@@ -58,6 +60,8 @@ Both buttons honour the export settings below, so a copied image is byte-for-byt
 ### Export theme
 
 `Match Obsidian` keeps whatever colours the diagram is rendered with. `Light` and `Dark` always export a fixed palette, which is what you want when the image lands in a document with a background you don't control — a light blog post, a dark slide deck, a PDF.
+
+![Comparison of Light and Dark export themes on the same diagram](docs/screenshot-themes.png)
 
 Pele drives every colour through CSS variables, so switching theme is a recolour, not a re-render: label positions, shapes and line breaks stay exactly as measured. Any palette the diagram sets itself (e.g. `%%{init: {"themeVariables": {"pie1": "#..."}}}%%`) is left alone in every theme.
 
